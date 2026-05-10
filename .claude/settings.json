@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n \"model LessonNote\\\\|model StandaloneLessonNote\\\\|model CurriculumWeek\" \"C:\\\\Users\\\\HP\\\\paralearn-backend\\\\prisma\\\\schema.prisma\")",
+      "Read(//c/Users/HP/paralearn-backend/prisma/**)"
+    ]
+  }
+}

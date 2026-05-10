@@ -1,0 +1,272 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  teacher
+  admin
+}
+
+enum DifficultyLevel {
+  basic
+  standard
+  advanced
+}
+
+enum TransactionType {
+  credit
+  debit
+}
+
+enum TransactionPurpose {
+  topup
+  lesson_plan_generation
+  lesson_note_generation
+  refund
+}
+
+enum TransactionStatus {
+  pending
+  success
+  failed
+}
+
+enum ResourceType {
+  textbook
+  scheme_supplement
+  past_question
+  other
+}
+
+enum PromptPhase {
+  plan
+  note
+}
+
+enum ResponseStatus {
+  success
+  failed
+  timeout
+}
+
+enum NotePhase {
+  plan_only
+  complete
+}
+
+enum NoteStatus {
+  draft
+  finalised
+}
+
+enum NotificationType {
+  wallet_topup
+  generation_complete
+  generation_failed
+  system
+}
+
+enum ConfigType {
+  number
+  boolean
+  string
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+model User {
+  userId       String   @id @default(uuid())
+  firstName    String   @db.VarChar(100)
+  lastName     String   @db.VarChar(100)
+  email        String   @unique @db.VarChar(255)
+  passwordHash String?  @db.VarChar(255)
+  googleId     String?  @unique @db.VarChar(255)
+  phoneNumber  String?  @db.VarChar(20)
+  state        String   @db.VarChar(100)
+  role         Role     @default(teacher)
+  isVerified   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  settings          UserSettings?
+  wallet            Wallet?
+  transactions      Transaction[]
+  lessonNotes       LessonNote[]
+  ownedResources    UserResource[]  @relation("ResourceOwner")
+  uploadedResources UserResource[]  @relation("ResourceUploader")
+  prompts           UserPrompt[]
+  notifications     Notification[]
+}
+
+model UserSettings {
+  settingId           String          @id @default(uuid())
+  userId              String          @unique
+  defaultState        String?         @db.VarChar(100)
+  alwaysConfirmState  Boolean         @default(true)
+  noteDifficultyLevel DifficultyLevel @default(standard)
+  defaultSubject      String?         @db.VarChar(100)
+  defaultClassLevel   String?         @db.VarChar(20)
+  emailNotifications  Boolean         @default(true)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+}
+
+model Wallet {
+  walletId  String   @id @default(uuid())
+  userId    String   @unique
+  balance   Decimal  @default(24.00) @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  transactions Transaction[]
+}
+
+model Transaction {
+  transactionId     String              @id @default(uuid())
+  walletId          String
+  userId            String
+  type              TransactionType
+  amountAdded       Decimal             @default(0.00) @db.Decimal(10, 2)
+  amountDeducted    Decimal             @default(0.00) @db.Decimal(10, 2)
+  balanceBefore     Decimal             @db.Decimal(10, 2)
+  balanceAfter      Decimal             @db.Decimal(10, 2)
+  purpose           TransactionPurpose?
+  paystackReference String?             @db.VarChar(255)
+  description       String?
+  status            TransactionStatus   @default(pending)
+  createdAt         DateTime            @default(now())
+
+  wallet      Wallet       @relation(fields: [walletId], references: [walletId])
+  user        User         @relation(fields: [userId], references: [userId])
+  lessonNotes LessonNote[]
+}
+
+model CurriculumWeek {
+  curriculumWeekId   String   @id @default(uuid())
+  state              String   @db.VarChar(100)
+  subject            String   @db.VarChar(150)
+  classLevel         String   @db.VarChar(20)
+  term               Int      @db.SmallInt
+  week               Int      @db.SmallInt
+  topic              String   @db.VarChar(255)
+  subTopics          String[]
+  objectives         String[]
+  teachingActivities String?
+  teachingAids       String?
+  evaluation         String?
+  referenceText      String?  @db.VarChar(255)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  lessonNotes LessonNote[]
+
+  @@unique([state, subject, classLevel, term, week])
+  @@index([state, subject, classLevel, term, week], name: "idx_curriculum_lookup")
+  @@index([state, subject], name: "idx_curriculum_state_subject")
+}
+
+model UserResource {
+  resourceId    String       @id @default(uuid())
+  userId        String
+  resourceName  String       @db.VarChar(255)
+  resourceType  ResourceType
+  subject       String?      @db.VarChar(150)
+  classLevel    String?      @db.VarChar(20)
+  state         String?      @db.VarChar(100)
+  fileUrl       String?
+  fileKey       String?
+  fileSizeBytes Int?
+  mimeType      String?      @db.VarChar(50)
+  isPublic      Boolean      @default(false)
+  uploadedBy    String?
+  createdAt     DateTime     @default(now())
+
+  owner       User        @relation("ResourceOwner", fields: [userId], references: [userId])
+  uploader    User?       @relation("ResourceUploader", fields: [uploadedBy], references: [userId])
+  lessonNotes LessonNote[]
+
+  @@index([state, subject, classLevel], name: "idx_resource_state_subject")
+}
+
+model LessonNote {
+  noteId           String  @id @default(uuid())
+  userId           String
+  curriculumWeekId String?
+  transactionId    String?
+  resourceId       String?
+
+  name        String? @db.VarChar(255)
+  subjectName String  @db.VarChar(150)
+  topic       String  @db.VarChar(255)
+  classLevel  String  @db.VarChar(20)
+  term        Int?    @db.SmallInt
+  week        Int?    @db.SmallInt
+  session     String? @db.VarChar(20)
+  state       String? @db.VarChar(100)
+
+  lessonPlanContent Json?
+  lessonNoteContent Json?
+  parratCostPlan    Decimal? @db.Decimal(5, 2)
+  parratCostNote    Decimal? @db.Decimal(5, 2)
+
+  phase       NotePhase  @default(plan_only)
+  status      NoteStatus @default(draft)
+  isExported  Boolean    @default(false)
+  exportCount Int        @default(0) @db.SmallInt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user           User            @relation(fields: [userId], references: [userId])
+  curriculumWeek CurriculumWeek? @relation(fields: [curriculumWeekId], references: [curriculumWeekId])
+  transaction    Transaction?    @relation(fields: [transactionId], references: [transactionId])
+  resource       UserResource?   @relation(fields: [resourceId], references: [resourceId])
+  prompts        UserPrompt[]
+
+  @@index([userId, createdAt(sort: Desc)], name: "idx_lessonnote_user")
+  @@index([userId, subjectName, classLevel], name: "idx_lessonnote_subject")
+}
+
+model UserPrompt {
+  promptId       String          @id @default(uuid())
+  userId         String
+  noteId         String?
+  phase          PromptPhase
+  promptText     String
+  modelUsed      String?         @db.VarChar(100)
+  tokensUsed     Int?
+  responseStatus ResponseStatus?
+  createdAt      DateTime        @default(now())
+
+  user User        @relation(fields: [userId], references: [userId])
+  note LessonNote? @relation(fields: [noteId], references: [noteId])
+}
+
+model Notification {
+  notificationId String           @id @default(uuid())
+  userId         String
+  type           NotificationType
+  title          String?          @db.VarChar(255)
+  body           String?
+  isRead         Boolean          @default(false)
+  metadata       Json?
+  createdAt      DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [userId])
+}
+
+model SystemConfig {
+  key       String     @id @db.VarChar(100)
+  value     String
+  type      ConfigType
+  updatedAt DateTime   @updatedAt
+}
