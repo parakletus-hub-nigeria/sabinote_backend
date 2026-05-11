@@ -29,16 +29,25 @@ jobs:
           npx prisma generate
           npm run build
 
+      - name: Verify dist was created
+        run: |
+          echo "=== dist/ contents ==="
+          ls -la dist/
+          echo "=== dist/main.js check ==="
+          ls -la dist/main.js
+
       - name: Prune to production dependencies only
         run: npm prune --production
 
-      - name: Copy spec and prompt files to dist
+      - name: Copy spec and prompt files into dist
         run: |
           cp sabinote_lesson_note_spec.md dist/ 2>/dev/null || true
-          cp -r prisma dist/ 2>/dev/null || true
 
       - name: Zip deployment package
-        run: zip -r deploy.zip dist/ node_modules/ package.json prisma/
+        run: |
+          zip -r deploy.zip dist/ node_modules/ package.json
+          echo "=== Verifying zip contains dist/main.js ==="
+          unzip -l deploy.zip | grep "dist/main"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
