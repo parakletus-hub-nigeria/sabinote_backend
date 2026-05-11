@@ -56,11 +56,26 @@ export class GenerationService {
     this.noteMaxTokens = +config.get('NOTE_MAX_TOKENS', '5000');
     
     try {
-      const spec = fs.readFileSync(path.join(process.cwd(), 'sabinote_lesson_note_spec.md'), 'utf8');
+      // Resolve spec file with multiple candidates so it works locally (cwd = project root)
+      // and on Azure (compiled to dist/src/, spec copied into dist/)
+      const candidates = [
+        path.join(__dirname, '..', '..', 'sabinote_lesson_note_spec.md'), // Azure: dist/src -> dist/
+        path.join(process.cwd(), 'sabinote_lesson_note_spec.md'),          // local dev
+        path.join(__dirname, 'sabinote_lesson_note_spec.md'),              // same dir fallback
+      ];
+      let spec = '';
+      for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) {
+          spec = fs.readFileSync(candidate, 'utf8');
+          this.logger.log(`Spec loaded from: ${candidate}`);
+          break;
+        }
+      }
       const match = spec.match(/## PART 1 — SYSTEM PROMPT[\s\S]*?```[\s\n]*([\s\S]*?)```/i);
       this.lessonNoteSystemPrompt = match ? match[1].trim() : 'You are an expert Nigerian secondary school curriculum specialist trained on NERDC standards.';
+      if (!match) this.logger.warn('Spec file found but PART 1 block not matched — using fallback prompt.');
     } catch (e) {
-      this.logger.warn('Could not load sabinote_lesson_note_spec.md');
+      this.logger.warn('Could not load sabinote_lesson_note_spec.md — using fallback prompt.');
       this.lessonNoteSystemPrompt = 'You are an expert Nigerian secondary school curriculum specialist trained on NERDC standards.';
     }
   }
