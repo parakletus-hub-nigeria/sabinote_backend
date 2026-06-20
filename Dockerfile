@@ -25,4 +25,4 @@ RUN npm run build
 EXPOSE 8080
 
 # Start the compiled production server
-CMD ["node", "server.js"]
+CMD ["node", "dist/src/main"]
