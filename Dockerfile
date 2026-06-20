@@ -15,7 +15,7 @@ COPY prisma ./prisma/
 RUN npm ci
 RUN npx prisma generate
 
-# Copy the rest of the application cod
+# Copy the rest of the application code
 COPY . .
 
 # Build the NestJS application into the /dist folder
