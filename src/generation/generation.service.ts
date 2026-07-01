@@ -24,6 +24,7 @@ import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaService } from '../prisma/prisma.service';
+import { CacheService } from '../cache/cache.service';
 import { CurriculumService, NormalizedCurriculum } from '../curriculum/curriculum.service';
 import { GenerateNoteDto } from './dto/generate-note.dto';
 import { GeneratePlanDto } from './dto/generate-plan.dto';
@@ -48,6 +49,7 @@ export class GenerationService {
     private prisma: PrismaService,
     private config: ConfigService,
     private curriculumService: CurriculumService,
+    private cache: CacheService,
   ) {
     this.apiKey = config.getOrThrow('OPENROUTER_API_KEY');
     this.planCost = +config.get('PLAN_COST_PARATS', '8');
@@ -89,23 +91,24 @@ export class GenerationService {
       throw new BadRequestException('Provide either curriculumWeekId or generalCurriculumId');
     }
 
-    const wallet = await this.ensureBalance(userId, this.planCost);
-
-    const user = await this.prisma.user.findUnique({
-      where: { userId },
-      include: { settings: true },
-    });
-
-    const difficulty = user?.settings?.noteDifficultyLevel ?? 'standard';
     const session = this.academicSession();
 
-    let curriculum: NormalizedCurriculum;
-    if (dto.curriculumWeekId) {
-      curriculum = await this.curriculumService.getStateWeekById(dto.curriculumWeekId);
-    } else {
-      const teacherState = user?.state ?? user?.settings?.defaultState ?? 'Federal';
-      curriculum = await this.curriculumService.getGeneralWeekById(dto.generalCurriculumId!, teacherState);
-    }
+    // Wallet + user always run in parallel (independent queries)
+    const [wallet, user] = await Promise.all([
+      this.ensureBalance(userId, this.planCost),
+      this.cache.wrap(
+        `user:settings:${userId}`,
+        () => this.prisma.user.findUnique({ where: { userId }, include: { settings: true } }),
+        120_000, // 2 min — short enough that settings changes feel responsive
+      ),
+    ]);
+
+    const difficulty = user?.settings?.noteDifficultyLevel ?? 'standard';
+    const teacherState = user?.state ?? user?.settings?.defaultState ?? 'Federal';
+
+    const curriculum = await (dto.curriculumWeekId
+      ? this.curriculumService.getStateWeekById(dto.curriculumWeekId)
+      : this.curriculumService.getGeneralWeekById(dto.generalCurriculumId!, teacherState));
 
     const prompt = this.buildPlanPrompt(curriculum, dto.durationMinutes, difficulty, session);
     const { data: plan, tokensUsed, status } = await this.callOpenRouter(prompt, LessonPlanSchema, this.planMaxTokens);
@@ -155,20 +158,21 @@ export class GenerationService {
         },
       });
 
-      await tx.userPrompt.create({
-        data: {
-          userId,
-          noteId: lessonNote.noteId,
-          phase: PromptPhase.plan,
-          promptText: prompt,
-          modelUsed: this.model,
-          tokensUsed,
-          responseStatus: status,
-        },
-      });
-
       return [transaction, lessonNote];
     });
+
+    // Audit log — does not need to be in the financial transaction
+    this.prisma.userPrompt.create({
+      data: {
+        userId,
+        noteId: note.noteId,
+        phase: PromptPhase.plan,
+        promptText: prompt,
+        modelUsed: this.model,
+        tokensUsed,
+        responseStatus: status,
+      },
+    }).catch((e) => this.logger.warn('Failed to save plan prompt log', e));
 
     return {
       noteId: note.noteId,
@@ -189,12 +193,25 @@ export class GenerationService {
     if (note.userId !== userId) throw new ForbiddenException();
     if (note.phase !== NotePhase.plan_only) throw new BadRequestException('Note is already complete');
 
-    const wallet = await this.ensureBalance(userId, this.noteCost);
+    // Wallet check + general curriculum lookup run in parallel after ownership validation
+    const [wallet, generalCurriculum] = await Promise.all([
+      this.ensureBalance(userId, this.noteCost),
+      note.generalCurriculumId
+        ? this.prisma.generalCurriculum.findUnique({ where: { generalCurriculumId: note.generalCurriculumId } })
+        : Promise.resolve(null),
+    ]);
 
     const plan = dto.editedLessonPlan ?? (note.lessonPlanContent as unknown as LessonPlan);
     if (!plan) throw new BadRequestException('No lesson plan found to generate note from');
 
-    const prompt = this.buildNotePrompt(plan, note.curriculumWeek!);
+    // Build curriculum context: state curriculum week takes priority, then general fallback
+    const curriculumContext = note.curriculumWeek
+      ? note.curriculumWeek
+      : generalCurriculum
+        ? { state: note.state ?? '', subTopics: generalCurriculum.subTopics, objectives: generalCurriculum.objectives }
+        : null;
+
+    const prompt = this.buildNotePrompt(plan, curriculumContext);
     const { data: lessonNote, tokensUsed, status } = await this.callOpenRouter(prompt, LessonNoteSchema, this.noteMaxTokens, this.lessonNoteSystemPrompt);
 
     if (!lessonNote) throw new ServiceUnavailableException('AI generation failed. Your Parats were not deducted.');
@@ -228,19 +245,20 @@ export class GenerationService {
           transactionId: transaction.transactionId,
         },
       });
-
-      await tx.userPrompt.create({
-        data: {
-          userId,
-          noteId: dto.noteId,
-          phase: PromptPhase.note,
-          promptText: prompt,
-          modelUsed: this.model,
-          tokensUsed,
-          responseStatus: status,
-        },
-      });
     });
+
+    // Audit log — does not need to be in the financial transaction
+    this.prisma.userPrompt.create({
+      data: {
+        userId,
+        noteId: dto.noteId,
+        phase: PromptPhase.note,
+        promptText: prompt,
+        modelUsed: this.model,
+        tokensUsed,
+        responseStatus: status,
+      },
+    }).catch((e) => this.logger.warn('Failed to save note prompt log', e));
 
     return {
       noteId: dto.noteId,
@@ -260,12 +278,25 @@ export class GenerationService {
     if (!note) throw new NotFoundException('Note not found');
     if (note.userId !== userId) throw new ForbiddenException();
 
-    const wallet = await this.ensureBalance(userId, this.regenCost);
     const isPlan = dto.phase === 'plan';
 
+    // Wallet check + optional general curriculum lookup run in parallel
+    const [wallet, generalCurriculum] = await Promise.all([
+      this.ensureBalance(userId, this.regenCost),
+      !note.curriculumWeek && note.generalCurriculumId
+        ? this.prisma.generalCurriculum.findUnique({ where: { generalCurriculumId: note.generalCurriculumId } })
+        : Promise.resolve(null),
+    ]);
+
+    const curriculumContext = note.curriculumWeek
+      ? note.curriculumWeek
+      : generalCurriculum
+        ? { state: note.state ?? '', subTopics: generalCurriculum.subTopics, objectives: generalCurriculum.objectives }
+        : null;
+
     const basePrompt = isPlan
-      ? this.buildPlanPrompt(note.curriculumWeek!, 40, 'standard', note.session ?? this.academicSession())
-      : this.buildNotePrompt(note.lessonPlanContent as unknown as LessonPlan, note.curriculumWeek!);
+      ? this.buildPlanPrompt(note.curriculumWeek ?? { state: note.state ?? '', subTopics: [], objectives: [], subject: note.subjectName, classLevel: note.classLevel, term: note.term ?? 1, week: note.week ?? 1, topic: note.topic } as any, 40, 'standard', note.session ?? this.academicSession())
+      : this.buildNotePrompt(note.lessonPlanContent as unknown as LessonPlan, curriculumContext);
 
     const prompt = dto.additionalInstructions
       ? `${basePrompt}\n\nADDITIONAL TEACHER INSTRUCTIONS: ${dto.additionalInstructions}`
@@ -297,18 +328,20 @@ export class GenerationService {
         where: { noteId: dto.noteId },
         data: isPlan ? { lessonPlanContent: content as any } : { lessonNoteContent: content as any },
       });
-      await tx.userPrompt.create({
-        data: {
-          userId,
-          noteId: dto.noteId,
-          phase: isPlan ? PromptPhase.plan : PromptPhase.note,
-          promptText: prompt,
-          modelUsed: this.model,
-          tokensUsed,
-          responseStatus: status,
-        },
-      });
     });
+
+    // Audit log — does not need to be in the financial transaction
+    this.prisma.userPrompt.create({
+      data: {
+        userId,
+        noteId: dto.noteId,
+        phase: isPlan ? PromptPhase.plan : PromptPhase.note,
+        promptText: prompt,
+        modelUsed: this.model,
+        tokensUsed,
+        responseStatus: status,
+      },
+    }).catch((e) => this.logger.warn('Failed to save regen prompt log', e));
 
     return {
       noteId: dto.noteId,
@@ -332,7 +365,24 @@ export class GenerationService {
     return wallet;
   }
 
-  private async callOpenRouter<T>(prompt: string, schema: z.ZodSchema<T> | z.ZodTypeAny, maxTokens = this.noteMaxTokens, systemPromptOverride?: string) {
+  /** Strips markdown code fences and trims to the outermost JSON object/array. */
+  private cleanRawJson(raw: string): string {
+    let cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```[\s\S]*$/i, '').trim();
+    const start = cleaned.search(/[\{\[]/);
+    if (start !== -1) {
+      const end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'));
+      if (end > start) cleaned = cleaned.substring(start, end + 1);
+    }
+    return cleaned;
+  }
+
+  private async callOpenRouter<T>(
+    prompt: string,
+    schema: z.ZodSchema<T> | z.ZodTypeAny,
+    maxTokens = this.noteMaxTokens,
+    systemPromptOverride?: string,
+    _retryCount = 0,
+  ) {
     const SYSTEM = `${systemPromptOverride || 'You are an expert Nigerian secondary school curriculum specialist trained on NERDC standards.'}\n\nYou ONLY respond with valid JSON that matches the exact schema provided. No explanations, no markdown code fences, no preamble.`;
 
     try {
@@ -353,6 +403,7 @@ export class GenerationService {
             'HTTP-Referer': 'https://sabinote.app',
             'X-Title': 'SabiNote',
           },
+          timeout: 60_000,
         },
       );
 
@@ -360,24 +411,29 @@ export class GenerationService {
       const usage = response.data.usage;
       const tokensUsed = (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0);
 
-      let cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```[\s\S]*$/i, '').trim();
-      
-      const startIdx = cleaned.search(/[\{\[]/);
-      if (startIdx !== -1) {
-        const endIdx = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'));
-        if (endIdx > startIdx) {
-          cleaned = cleaned.substring(startIdx, endIdx + 1);
-        }
-      }
-      
+      const cleaned = this.cleanRawJson(raw);
       const parsed = JSON.parse(cleaned);
       const validated = schema.parse(parsed);
 
       return { data: validated as T, tokensUsed, status: ResponseStatus.success };
     } catch (err: any) {
-      if (err?.response?.status === 402 && maxTokens > 2000) {
+      // Reduce tokens on 402 (insufficient model credits), max 3 reductions
+      if (err?.response?.status === 402 && maxTokens > 2000 && _retryCount < 3) {
         this.logger.warn(`Insufficient credits, retrying with reduced max_tokens: ${maxTokens - 1000}`);
-        return this.callOpenRouter(prompt, schema, maxTokens - 1000, systemPromptOverride);
+        return this.callOpenRouter(prompt, schema, maxTokens - 1000, systemPromptOverride, _retryCount + 1);
+      }
+
+      // Retry on transient network/server errors (5xx, timeout, connection reset)
+      const isTransient =
+        err?.code === 'ECONNABORTED' ||
+        err?.code === 'ETIMEDOUT' ||
+        err?.code === 'ECONNRESET' ||
+        (err?.response?.status >= 500 && err?.response?.status !== 402);
+      if (isTransient && _retryCount < 2) {
+        const delay = (_retryCount + 1) * 1500;
+        this.logger.warn(`Transient error (${err?.code ?? err?.response?.status}), retrying in ${delay}ms`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        return this.callOpenRouter(prompt, schema, maxTokens, systemPromptOverride, _retryCount + 1);
       }
 
       const detail = err?.response?.data ?? err?.message ?? err;
@@ -514,7 +570,7 @@ OUTPUT — return ONLY this exact JSON, no markdown, no extra text:
 }`;
   }
 
-  private buildNotePrompt(plan: LessonPlan, c: CurriculumWeek | null): string {
+  private buildNotePrompt(plan: LessonPlan, c: { state?: string | null; subTopics: string[]; objectives: string[] } | null): string {
     const meta = plan?.metadata ?? {};
     const state = c?.state ?? meta.state ?? '';
     const subTopics = c?.subTopics ?? meta.subTopics ?? [];
@@ -527,7 +583,7 @@ Generate a COMPREHENSIVE LESSON NOTE from the approved lesson plan below. A less
 ═══════════════════════════════════════
 APPROVED LESSON PLAN
 ═══════════════════════════════════════
-${JSON.stringify(plan, null, 2)}
+${JSON.stringify(plan)}
 
 ═══════════════════════════════════════
 CURRICULUM CONTEXT (${state} State)

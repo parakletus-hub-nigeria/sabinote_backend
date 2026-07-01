@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CacheService } from '../cache/cache.service';
 import { SeedCurriculumDto } from './dto/seed-curriculum.dto';
 import { SeedGeneralCurriculumDto } from './dto/seed-general-curriculum.dto';
 
@@ -21,19 +22,33 @@ export type NormalizedCurriculum = {
   referenceText?: string | null;
 };
 
+// Cache TTLs (milliseconds)
+const TTL = {
+  STATES: 86_400_000,      // 24h — states never change between seeds
+  WEEK_BY_ID: 86_400_000,  // 24h — curriculum content rarely changes
+  SUBJECTS: 21_600_000,    // 6h
+  WEEKS_LIST: 21_600_000,  // 6h
+  WEEK_LOOKUP: 43_200_000, // 12h
+};
+
 @Injectable()
 export class CurriculumService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cache: CacheService,
+  ) {}
 
-  // ─── State curriculum (unchanged) ────────────────────────────────────────
+  // ─── State curriculum ─────────────────────────────────────────────────────
 
-  async getStates() {
-    const rows = await this.prisma.curriculumWeek.findMany({
-      distinct: ['state'],
-      select: { state: true },
-      orderBy: { state: 'asc' },
-    });
-    return rows.map((r) => r.state);
+  async getStates(): Promise<string[]> {
+    return this.cache.wrap(
+      'cur:states',
+      () =>
+        this.prisma.curriculumWeek
+          .findMany({ distinct: ['state'], select: { state: true }, orderBy: { state: 'asc' } })
+          .then((rows) => rows.map((r) => r.state)),
+      TTL.STATES,
+    );
   }
 
   async seed(dto: SeedCurriculumDto) {
@@ -51,6 +66,8 @@ export class CurriculumService {
         }),
       ),
     );
+    // Invalidate all curriculum caches — state curriculum data changed
+    await this.cache.delByPrefix('cur:');
     return { upserted: results.filter((r) => r.status === 'fulfilled').length, total: dto.weeks.length };
   }
 
@@ -70,6 +87,8 @@ export class CurriculumService {
         }),
       ),
     );
+    // Invalidate all curriculum caches — general curriculum data changed
+    await this.cache.delByPrefix('cur:');
     return { upserted: results.filter((r) => r.status === 'fulfilled').length, total: dto.weeks.length };
   }
 
@@ -81,27 +100,33 @@ export class CurriculumService {
    * so the teacher always sees the full national catalogue.
    */
   async getSubjects(state: string, classLevel: string): Promise<string[]> {
-    const [stateRows, generalRows] = await Promise.all([
-      this.prisma.curriculumWeek.findMany({
-        where: { state, classLevel },
-        distinct: ['subject'],
-        select: { subject: true },
-        orderBy: { subject: 'asc' },
-      }),
-      this.prisma.generalCurriculum.findMany({
-        where: { classLevel },
-        distinct: ['subject'],
-        select: { subject: true },
-        orderBy: { subject: 'asc' },
-      }),
-    ]);
+    return this.cache.wrap(
+      `cur:subjects:${state}:${classLevel}`,
+      async () => {
+        const [stateRows, generalRows] = await Promise.all([
+          this.prisma.curriculumWeek.findMany({
+            where: { state, classLevel },
+            distinct: ['subject'],
+            select: { subject: true },
+            orderBy: { subject: 'asc' },
+          }),
+          this.prisma.generalCurriculum.findMany({
+            where: { classLevel },
+            distinct: ['subject'],
+            select: { subject: true },
+            orderBy: { subject: 'asc' },
+          }),
+        ]);
 
-    const seen = new Set<string>();
-    const subjects: string[] = [];
-    for (const r of [...stateRows, ...generalRows]) {
-      if (!seen.has(r.subject)) { seen.add(r.subject); subjects.push(r.subject); }
-    }
-    return subjects.sort();
+        const seen = new Set<string>();
+        const subjects: string[] = [];
+        for (const r of [...stateRows, ...generalRows]) {
+          if (!seen.has(r.subject)) { seen.add(r.subject); subjects.push(r.subject); }
+        }
+        return subjects.sort();
+      },
+      TTL.SUBJECTS,
+    );
   }
 
   /**
@@ -111,30 +136,35 @@ export class CurriculumService {
   async getWeeks(
     state: string, subject: string, classLevel: string, term: number,
   ): Promise<{ id: string; week: number; topic: string; source: 'state' | 'general' }[]> {
-    const [stateRows, generalRows] = await Promise.all([
-      this.prisma.curriculumWeek.findMany({
-        where: { state, subject, classLevel, term },
-        select: { curriculumWeekId: true, week: true, topic: true },
-        orderBy: { week: 'asc' },
-      }),
-      this.prisma.generalCurriculum.findMany({
-        where: { subject, classLevel, term },
-        select: { generalCurriculumId: true, week: true, topic: true },
-        orderBy: { week: 'asc' },
-      }),
-    ]);
+    return this.cache.wrap(
+      `cur:weeks:${state}:${subject}:${classLevel}:${term}`,
+      async () => {
+        const [stateRows, generalRows] = await Promise.all([
+          this.prisma.curriculumWeek.findMany({
+            where: { state, subject, classLevel, term },
+            select: { curriculumWeekId: true, week: true, topic: true },
+            orderBy: { week: 'asc' },
+          }),
+          this.prisma.generalCurriculum.findMany({
+            where: { subject, classLevel, term },
+            select: { generalCurriculumId: true, week: true, topic: true },
+            orderBy: { week: 'asc' },
+          }),
+        ]);
 
-    const stateWeekNums = new Set(stateRows.map((r) => r.week));
+        const stateWeekNums = new Set(stateRows.map((r) => r.week));
 
-    const result = [
-      ...stateRows.map((r) => ({ id: r.curriculumWeekId, week: r.week, topic: r.topic, source: 'state' as const })),
-      // Only add general rows for weeks not covered by state curriculum
-      ...generalRows
-        .filter((r) => !stateWeekNums.has(r.week))
-        .map((r) => ({ id: r.generalCurriculumId, week: r.week, topic: r.topic, source: 'general' as const })),
-    ];
+        const result = [
+          ...stateRows.map((r) => ({ id: r.curriculumWeekId, week: r.week, topic: r.topic, source: 'state' as const })),
+          ...generalRows
+            .filter((r) => !stateWeekNums.has(r.week))
+            .map((r) => ({ id: r.generalCurriculumId, week: r.week, topic: r.topic, source: 'general' as const })),
+        ];
 
-    return result.sort((a, b) => a.week - b.week);
+        return result.sort((a, b) => a.week - b.week);
+      },
+      TTL.WEEKS_LIST,
+    );
   }
 
   /**
@@ -145,24 +175,26 @@ export class CurriculumService {
   async getWeek(
     state: string, subject: string, classLevel: string, term: number, week: number,
   ): Promise<NormalizedCurriculum> {
-    const stateRow = await this.prisma.curriculumWeek.findUnique({
-      where: { state_subject_classLevel_term_week: { state, subject, classLevel, term, week } },
-    });
+    return this.cache.wrap(
+      `cur:week:${state}:${subject}:${classLevel}:${term}:${week}`,
+      async () => {
+        const stateRow = await this.prisma.curriculumWeek.findUnique({
+          where: { state_subject_classLevel_term_week: { state, subject, classLevel, term, week } },
+        });
 
-    if (stateRow) {
-      return { source: 'state', id: stateRow.curriculumWeekId, ...stateRow };
-    }
+        if (stateRow) return { source: 'state', id: stateRow.curriculumWeekId, ...stateRow };
 
-    const generalRow = await this.prisma.generalCurriculum.findUnique({
-      where: { subject_classLevel_term_week: { subject, classLevel, term, week } },
-    });
+        const generalRow = await this.prisma.generalCurriculum.findUnique({
+          where: { subject_classLevel_term_week: { subject, classLevel, term, week } },
+        });
 
-    if (generalRow) {
-      return { source: 'general', id: generalRow.generalCurriculumId, state, ...generalRow };
-    }
+        if (generalRow) return { source: 'general', id: generalRow.generalCurriculumId, state, ...generalRow };
 
-    throw new NotFoundException(
-      `No curriculum found for ${subject} ${classLevel} Term ${term} Week ${week} in ${state} or general.`,
+        throw new NotFoundException(
+          `No curriculum found for ${subject} ${classLevel} Term ${term} Week ${week} in ${state} or general.`,
+        );
+      },
+      TTL.WEEK_LOOKUP,
     );
   }
 
@@ -171,9 +203,15 @@ export class CurriculumService {
    * Used by generation when curriculumWeekId is provided.
    */
   async getStateWeekById(curriculumWeekId: string): Promise<NormalizedCurriculum> {
-    const row = await this.prisma.curriculumWeek.findUnique({ where: { curriculumWeekId } });
-    if (!row) throw new NotFoundException('Curriculum week not found');
-    return { source: 'state', id: row.curriculumWeekId, ...row };
+    return this.cache.wrap(
+      `cur:sw:${curriculumWeekId}`,
+      async () => {
+        const row = await this.prisma.curriculumWeek.findUnique({ where: { curriculumWeekId } });
+        if (!row) throw new NotFoundException('Curriculum week not found');
+        return { source: 'state' as const, id: row.curriculumWeekId, ...row };
+      },
+      TTL.WEEK_BY_ID,
+    );
   }
 
   /**
@@ -181,8 +219,14 @@ export class CurriculumService {
    * The caller supplies the teacher's state so the prompt has a state value.
    */
   async getGeneralWeekById(generalCurriculumId: string, teacherState: string): Promise<NormalizedCurriculum> {
-    const row = await this.prisma.generalCurriculum.findUnique({ where: { generalCurriculumId } });
-    if (!row) throw new NotFoundException('General curriculum week not found');
-    return { source: 'general', id: row.generalCurriculumId, state: teacherState, ...row };
+    return this.cache.wrap(
+      `cur:gw:${generalCurriculumId}:${teacherState}`,
+      async () => {
+        const row = await this.prisma.generalCurriculum.findUnique({ where: { generalCurriculumId } });
+        if (!row) throw new NotFoundException('General curriculum week not found');
+        return { source: 'general' as const, id: row.generalCurriculumId, state: teacherState, ...row };
+      },
+      TTL.WEEK_BY_ID,
+    );
   }
 }

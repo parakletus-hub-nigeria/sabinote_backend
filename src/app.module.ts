@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
+import { AppCacheModule } from './cache/cache.module';
 import { CurriculumModule } from './curriculum/curriculum.module';
 import { ExportModule } from './export/export.module';
 import { GenerationModule } from './generation/generation.module';
@@ -15,6 +16,7 @@ import { WalletModule } from './wallet/wallet.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    AppCacheModule,
     PrismaModule,
     AuthModule,
     UsersModule,
