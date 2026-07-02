@@ -94,31 +94,11 @@ export class WalletService {
       },
     });
 
-    const callbackUrl = this.config.get<string>('PAYSTACK_CALLBACK_URL');
-
-    const response = await axios.post(
-      `${this.paystackBase}/transaction/initialize`,
-      {
-        email: user.email,
-        amount: pkg.priceNGN * 100, // Paystack expects kobo
-        reference,
-        ...(callbackUrl && { callback_url: callbackUrl }),
-        metadata: {
-          userId,
-          parats: pkg.parats,
-          packageId: pkg.id,
-          transactionId: transaction.transactionId,
-        },
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${this.config.getOrThrow('PAYSTACK_SECRET_KEY')}`,
-        },
-      },
-    );
-
+    // The frontend opens Paystack's Inline popup with this reference directly —
+    // no server-side /transaction/initialize call or callback URL required, so
+    // there's nothing here that depends on deploy-time config being correct.
     return {
-      authorizationUrl: response.data.data.authorization_url,
+      email: user.email,
       reference,
       transactionId: transaction.transactionId,
       package: pkg,
@@ -132,14 +112,22 @@ export class WalletService {
     });
     if (!txRecord) throw new NotFoundException('Transaction not found');
 
-    const response = await axios.get(
-      `${this.paystackBase}/transaction/verify/${reference}`,
-      {
-        headers: {
-          Authorization: `Bearer ${this.config.getOrThrow('PAYSTACK_SECRET_KEY')}`,
+    let response: any;
+    try {
+      response = await axios.get(
+        `${this.paystackBase}/transaction/verify/${reference}`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.config.getOrThrow('PAYSTACK_SECRET_KEY')}`,
+          },
+          timeout: 15_000,
         },
-      },
-    );
+      );
+    } catch (err: any) {
+      const paystackMsg = err?.response?.data?.message ?? err?.message ?? 'Paystack error';
+      const paystackStatus = err?.response?.status;
+      throw new BadRequestException(`Payment verification failed (${paystackStatus}): ${paystackMsg}`);
+    }
 
     if (response.data.data.status !== 'success') {
       throw new BadRequestException('Payment not yet successful');
