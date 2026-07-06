@@ -603,15 +603,18 @@ export class ExportService {
     const rowH = 22;
 
     rows.forEach((row) => {
+      // Snapshot y before drawing so all cells in the row share the same baseline
+      const rowY = doc.y;
       let x = this.LEFT;
       row.forEach((cell, ci) => {
         const isLabel = ci % 2 === 0;
-        doc.rect(x, doc.y, colW[ci], rowH).fill('#ffffff').stroke('#000000');
+        doc.rect(x, rowY, colW[ci], rowH).fill('#ffffff').stroke('#000000');
         doc.fontSize(12).font(isLabel ? 'Times-Bold' : 'Times-Roman').fillColor('#000000')
-          .text(cell, x + 4, doc.y - rowH + 6, { width: colW[ci] - 8, height: rowH - 4 });
+          .text(cell, x + 4, rowY + 6, { width: colW[ci] - 8, height: rowH - 4, lineBreak: false });
         x += colW[ci];
       });
-      doc.moveDown(rowH / doc.currentLineHeight());
+      // Advance cursor to exactly the bottom of this row
+      doc.y = rowY + rowH;
     });
     doc.moveDown(0.6);
   }
