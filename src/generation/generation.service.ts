@@ -18,8 +18,10 @@ import {
   TransactionPurpose,
   TransactionStatus,
   TransactionType,
+  Wallet,
 } from '@prisma/client';
 import axios from 'axios';
+import type { Response } from 'express';
 import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -216,9 +218,47 @@ export class GenerationService {
 
     if (!lessonNote) throw new ServiceUnavailableException('AI generation failed. Your Parats were not deducted.');
 
-    await this.prisma.$transaction(async (tx) => {
-      const newBalance = Number(wallet.balance) - this.noteCost;
+    const walletBalance = await this.chargeAndSaveNote({
+      userId,
+      noteId: dto.noteId,
+      wallet,
+      plan,
+      lessonNote,
+      prompt,
+      tokensUsed,
+      status,
+      topic: note.topic,
+    });
 
+    return {
+      noteId: dto.noteId,
+      lessonNote,
+      walletBalance,
+      parratsCost: this.noteCost,
+    };
+  }
+
+  /**
+   * Charges the note cost and persists the generated note in one financial
+   * transaction, then fire-and-forgets the audit log. Shared by the blocking
+   * and streaming note-generation paths so the money logic can't drift.
+   * Returns the new wallet balance.
+   */
+  private async chargeAndSaveNote(params: {
+    userId: string;
+    noteId: string;
+    wallet: Wallet;
+    plan: LessonPlan;
+    lessonNote: LessonNote;
+    prompt: string;
+    tokensUsed: number;
+    status: ResponseStatus;
+    topic: string;
+  }): Promise<number> {
+    const { userId, noteId, wallet, plan, lessonNote, prompt, tokensUsed, status, topic } = params;
+    const newBalance = Number(wallet.balance) - this.noteCost;
+
+    await this.prisma.$transaction(async (tx) => {
       const transaction = await tx.transaction.create({
         data: {
           walletId: wallet.walletId,
@@ -229,14 +269,14 @@ export class GenerationService {
           balanceAfter: newBalance,
           purpose: TransactionPurpose.lesson_note_generation,
           status: TransactionStatus.success,
-          description: `Lesson note: ${note.topic}`,
+          description: `Lesson note: ${topic}`,
         },
       });
 
       await tx.wallet.update({ where: { walletId: wallet.walletId }, data: { balance: newBalance } });
 
       await tx.lessonNote.update({
-        where: { noteId: dto.noteId },
+        where: { noteId },
         data: {
           lessonPlanContent: plan as any,
           lessonNoteContent: lessonNote as any,
@@ -251,7 +291,7 @@ export class GenerationService {
     this.prisma.userPrompt.create({
       data: {
         userId,
-        noteId: dto.noteId,
+        noteId,
         phase: PromptPhase.note,
         promptText: prompt,
         modelUsed: this.model,
@@ -260,12 +300,92 @@ export class GenerationService {
       },
     }).catch((e) => this.logger.warn('Failed to save note prompt log', e));
 
-    return {
-      noteId: dto.noteId,
-      lessonNote,
-      walletBalance: Number(wallet.balance) - this.noteCost,
-      parratsCost: this.noteCost,
+    return newBalance;
+  }
+
+  // ─── Phase 2 (streaming): Lesson Note over SSE ───────────────────────────
+  //
+  // Streams the model's tokens to the client for live progress, then does the
+  // authoritative parse/validate/charge/persist server-side once the full text
+  // has arrived. The streamed tokens are UX only — the client trusts the final
+  // `done` event, which carries the validated + persisted note.
+
+  async streamNote(userId: string, dto: GenerateNoteDto, res: Response): Promise<void> {
+    // ── Pre-checks run BEFORE we switch to SSE, so failures surface as normal
+    //    HTTP errors handled by Nest's exception filter (no charge, clean JSON).
+    const note = await this.prisma.lessonNote.findUnique({
+      where: { noteId: dto.noteId },
+      include: { curriculumWeek: true },
+    });
+    if (!note) throw new NotFoundException('Note not found');
+    if (note.userId !== userId) throw new ForbiddenException();
+    if (note.phase !== NotePhase.plan_only) throw new BadRequestException('Note is already complete');
+
+    const [wallet, generalCurriculum] = await Promise.all([
+      this.ensureBalance(userId, this.noteCost),
+      note.generalCurriculumId
+        ? this.prisma.generalCurriculum.findUnique({ where: { generalCurriculumId: note.generalCurriculumId } })
+        : Promise.resolve(null),
+    ]);
+
+    const plan = dto.editedLessonPlan ?? (note.lessonPlanContent as unknown as LessonPlan);
+    if (!plan) throw new BadRequestException('No lesson plan found to generate note from');
+
+    const curriculumContext = note.curriculumWeek
+      ? note.curriculumWeek
+      : generalCurriculum
+        ? { state: note.state ?? '', subTopics: generalCurriculum.subTopics, objectives: generalCurriculum.objectives }
+        : null;
+
+    const prompt = this.buildNotePrompt(plan, curriculumContext);
+
+    // ── Switch to SSE mode. From here, errors are emitted as `error` events.
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // don't let any proxy buffer the stream
+    res.flushHeaders?.();
+
+    const send = (event: string, data: unknown) => {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
+
+    // Heartbeat keeps intermediaries from idling the connection out during
+    // long model "thinking" gaps before the first token.
+    const heartbeat = setInterval(() => res.write(': ping\n\n'), 15_000);
+
+    try {
+      const { text, tokensUsed } = await this.streamOpenRouter(
+        prompt,
+        this.noteMaxTokens,
+        this.lessonNoteSystemPrompt,
+        (delta) => send('token', { t: delta }),
+      );
+
+      const lessonNote = LessonNoteSchema.parse(JSON.parse(this.cleanRawJson(text)));
+
+      const walletBalance = await this.chargeAndSaveNote({
+        userId,
+        noteId: dto.noteId,
+        wallet,
+        plan,
+        lessonNote,
+        prompt,
+        tokensUsed,
+        status: ResponseStatus.success,
+        topic: note.topic,
+      });
+
+      send('done', { noteId: dto.noteId, lessonNote, walletBalance, parratsCost: this.noteCost });
+    } catch (err: any) {
+      const detail = err?.response?.data ?? err?.message ?? 'Generation failed';
+      this.logger.error('Streaming note generation failed', JSON.stringify(detail));
+      // No charge occurred — the transaction only runs on the success path above.
+      send('error', { message: 'AI generation failed. Your Parats were not deducted.' });
+    } finally {
+      clearInterval(heartbeat);
+      res.end();
+    }
   }
 
   // ─── Regenerate ──────────────────────────────────────────────────────────
@@ -280,11 +400,18 @@ export class GenerationService {
 
     const isPlan = dto.phase === 'plan';
 
-    // Wallet check + optional general curriculum lookup run in parallel
-    const [wallet, generalCurriculum] = await Promise.all([
+    // Wallet check + optional general curriculum + (for plan regen) user settings run in parallel
+    const [wallet, generalCurriculum, user] = await Promise.all([
       this.ensureBalance(userId, this.regenCost),
       !note.curriculumWeek && note.generalCurriculumId
         ? this.prisma.generalCurriculum.findUnique({ where: { generalCurriculumId: note.generalCurriculumId } })
+        : Promise.resolve(null),
+      isPlan
+        ? this.cache.wrap(
+            `user:settings:${userId}`,
+            () => this.prisma.user.findUnique({ where: { userId }, include: { settings: true } }),
+            120_000,
+          )
         : Promise.resolve(null),
     ]);
 
@@ -294,8 +421,14 @@ export class GenerationService {
         ? { state: note.state ?? '', subTopics: generalCurriculum.subTopics, objectives: generalCurriculum.objectives }
         : null;
 
+    // Preserve the teacher's original duration (from the stored plan) and difficulty (from settings)
+    // instead of silently resetting to defaults on regeneration.
+    const storedPlan = note.lessonPlanContent as unknown as LessonPlan | null;
+    const regenDuration = storedPlan?.metadata?.duration ?? 40;
+    const regenDifficulty = user?.settings?.noteDifficultyLevel ?? 'standard';
+
     const basePrompt = isPlan
-      ? this.buildPlanPrompt(note.curriculumWeek ?? { state: note.state ?? '', subTopics: [], objectives: [], subject: note.subjectName, classLevel: note.classLevel, term: note.term ?? 1, week: note.week ?? 1, topic: note.topic } as any, 40, 'standard', note.session ?? this.academicSession())
+      ? this.buildPlanPrompt(note.curriculumWeek ?? { state: note.state ?? '', subTopics: [], objectives: [], subject: note.subjectName, classLevel: note.classLevel, term: note.term ?? 1, week: note.week ?? 1, topic: note.topic } as any, regenDuration, regenDifficulty, note.session ?? this.academicSession())
       : this.buildNotePrompt(note.lessonPlanContent as unknown as LessonPlan, curriculumContext);
 
     const prompt = dto.additionalInstructions
@@ -369,10 +502,14 @@ export class GenerationService {
   private cleanRawJson(raw: string): string {
     let cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```[\s\S]*$/i, '').trim();
     const start = cleaned.search(/[\{\[]/);
-    if (start !== -1) {
-      const end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'));
-      if (end > start) cleaned = cleaned.substring(start, end + 1);
-    }
+    if (start === -1) return cleaned;
+
+    // Match the opening delimiter to its correct closer so trailing model
+    // commentary (which may contain stray '}' or ']') can't corrupt the JSON.
+    const open = cleaned[start];
+    const close = open === '{' ? '}' : ']';
+    const end = cleaned.lastIndexOf(close);
+    if (end > start) cleaned = cleaned.substring(start, end + 1);
     return cleaned;
   }
 
@@ -440,6 +577,86 @@ export class GenerationService {
       this.logger.error('OpenRouter call failed', JSON.stringify(detail));
       return { data: null, tokensUsed: 0, status: ResponseStatus.failed };
     }
+  }
+
+  /**
+   * Calls OpenRouter with `stream: true` and invokes `onDelta` for each content
+   * chunk as it arrives. Resolves with the full accumulated text and token usage
+   * once the stream ends. No retry — a mid-stream failure rejects and the caller
+   * emits an error event (nothing is charged).
+   */
+  private async streamOpenRouter(
+    prompt: string,
+    maxTokens: number,
+    systemPromptOverride: string,
+    onDelta: (delta: string) => void,
+  ): Promise<{ text: string; tokensUsed: number }> {
+    const SYSTEM = `${systemPromptOverride}\n\nYou ONLY respond with valid JSON that matches the exact schema provided. No explanations, no markdown code fences, no preamble.`;
+
+    const response = await axios.post(
+      `${this.baseUrl}/chat/completions`,
+      {
+        model: this.model,
+        max_tokens: maxTokens,
+        stream: true,
+        stream_options: { include_usage: true },
+        messages: [
+          { role: 'system', content: SYSTEM },
+          { role: 'user', content: prompt },
+        ],
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://sabinote.app',
+          'X-Title': 'SabiNote',
+        },
+        responseType: 'stream',
+        timeout: 120_000,
+      },
+    );
+
+    return new Promise((resolve, reject) => {
+      let full = '';
+      let buffer = '';
+      let tokensUsed = 0;
+
+      const stream = response.data as NodeJS.ReadableStream;
+
+      stream.on('data', (chunk: Buffer) => {
+        buffer += chunk.toString('utf8');
+        // SSE frames are separated by newlines; keep the last (possibly partial) line buffered.
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue; // skip `:` keepalive comments
+          const payload = trimmed.slice(5).trim();
+          if (payload === '[DONE]') continue;
+          try {
+            const json = JSON.parse(payload);
+            if (json.error) {
+              reject(new Error(json.error?.message ?? 'OpenRouter stream error'));
+              return;
+            }
+            if (json.usage) {
+              tokensUsed = (json.usage.prompt_tokens ?? 0) + (json.usage.completion_tokens ?? 0);
+            }
+            const delta: string | undefined = json.choices?.[0]?.delta?.content;
+            if (delta) {
+              full += delta;
+              onDelta(delta);
+            }
+          } catch {
+            // Partial JSON spanning chunk boundaries — ignore; it'll complete next chunk.
+          }
+        }
+      });
+
+      stream.on('end', () => resolve({ text: full, tokensUsed }));
+      stream.on('error', reject);
+    });
   }
 
   // ─── Prompt Builders ─────────────────────────────────────────────────────
@@ -679,82 +896,39 @@ OUTPUT — return ONLY this exact JSON, no markdown, no extra text:
     ]
   },
   "presentation": [
-    {
-      "step": 1,
-      "title": "Identification of Prior Ideas",
-      "teacherActivity": "Teacher reviews the previous topic by writing three review questions on the board.",
-      "studentActivity": "Students solve the review questions in their notebooks.",
-      "content": "The previous lesson covered percentages. To connect this to money, the teacher reviews the concept of finding 10% of 500 Naira (50 Naira) and converting 50% to a decimal (0.5).",
-      "duration": "5 minutes"
-    },
-    {
-      "step": 2,
-      "title": "Exploration",
-      "teacherActivity": "Teacher introduces Cost Price and Selling Price, demonstrating the calculation of Profit and Loss.",
-      "studentActivity": "Students copy definitions into their notes and observe the worked examples.",
-      "content": "Cost Price (CP) is the price at which goods are bought. Selling Price (SP) is the price at which goods are sold. Profit occurs when SP is greater than CP (Profit = SP - CP). Loss occurs when CP is greater than SP (Loss = CP - SP).",
-      "duration": "20 minutes"
-    },
-    {
-      "step": 3,
-      "title": "Discussion & Application",
-      "teacherActivity": "Teacher writes three practice word problems on the board and circulates to correct mistakes.",
-      "studentActivity": "Students calculate profit and loss for the given word problems.",
-      "content": "Word problems involve calculating profit from a CP of 1000 Naira and SP of 1200 Naira, and calculating loss from a CP of 500 Naira and SP of 450 Naira.",
-      "duration": "10 minutes"
-    }
+    { "step": 1, "title": "Identification of Prior Ideas", "teacherActivity": "<third-person, no dialogue>", "studentActivity": "<third-person, no dialogue>", "content": "<full academic content per the Step 1 rules above>", "duration": "5 minutes" },
+    { "step": 2, "title": "Exploration", "teacherActivity": "<...>", "studentActivity": "<...>", "content": "<full academic content per the Step 2 rules above>", "duration": "20 minutes" },
+    { "step": 3, "title": "Discussion & Application", "teacherActivity": "<...>", "studentActivity": "<...>", "content": "<full academic content per the Step 3 rules above>", "duration": "10 minutes" }
   ],
   "subjectContent": [
     {
-      "subTopic": "Name of sub-topic",
-      "explanation": "Complete academic explanation students can study from — definitions, rules, formulas, context",
+      "subTopic": "<sub-topic name>",
+      "explanation": "<complete, self-contained academic content — definitions, rules, formulas, context>",
       "workedExamples": [
-        { "problem": "Problem statement", "solution": "Step 1: ...\\nStep 2: ...\\nStep 3: ...\\nAnswer: ..." },
-        { "problem": "Second problem", "solution": "Full step-by-step working" }
+        { "problem": "<problem statement>", "solution": "Step 1: ...\\nStep 2: ...\\nAnswer: ..." }
       ],
-      "keyPoints": [
-        "Definition or rule written exactly as it appears on the board",
-        "Formula or key fact 2",
-        "Important reminder or exception"
-      ],
+      "keyPoints": ["<exact board text 1>", "<key fact 2>"],
       "diagram": {
-        "type": "cartesian_plane",
-        "title": "Optional: only include diagram when genuinely useful",
-        "xRange": [-6, 6],
-        "yRange": [-6, 6],
-        "points": [{ "x": 3, "y": 2, "label": "A" }],
-        "lines": [{ "from": { "x": 0, "y": 0 }, "to": { "x": 3, "y": 6 } }]
+        "type": "number_line | cartesian_plane | bar_chart | table_of_values",
+        "title": "<optional — OMIT the entire diagram field for non-visual topics>",
+        "range": [-5, 5],
+        "markedPoints": [{ "value": 3, "label": "A" }]
       }
     }
   ],
   "commonMisconceptions": [
-    {
-      "description": "Error description",
-      "reason": "Why students make it",
-      "correction": "How teacher corrects it"
-    }
+    { "description": "<error>", "reason": "<why students make it>", "correction": "<how teacher corrects it>" }
   ],
-  "differentiation": {
-    "support": "Support strategy for struggling students",
-    "extension": "Extension task for advanced students"
-  },
-  "boardSummary": [
-    "Key definition 1 (exact board text)",
-    "Formula or rule 2",
-    "Important fact 3",
-    "Reminder or exception 4"
-  ],
+  "differentiation": { "support": "<strategy for struggling students>", "extension": "<task for advanced students>" },
+  "boardSummary": ["<key fact/formula 1>", "<2>", "<3>", "<4 — 4-6 items total>"],
   "evaluation": [
-    { "question": "Recall question testing objective 1?", "expectedAnswer": "Complete expected answer" },
-    { "question": "Comprehension question testing objective 2?", "expectedAnswer": "Complete expected answer" },
-    { "question": "Application problem testing objective 3?", "expectedAnswer": "Full worked answer" }
+    { "question": "<question testing a stated objective>", "expectedAnswer": "<complete expected answer>" }
   ],
-  "summary": "Teacher recaps the main definitions of profit and loss, summarises the formulas, and previews the next lesson on simple interest.",
-  "assignment": [
-    "Specific task 1 with textbook reference if applicable",
-    "Specific task 2"
-  ]
-}`;
+  "summary": "<teacher's closing recap — key points, real-life link, encouragement>",
+  "assignment": ["<task 1 with textbook reference if applicable>", "<task 2 — 2-4 tasks total>"]
+}
+
+Follow the array minimums stated in the rules above (objectives, worked examples, board summary, evaluation). The placeholders show structure only — replace every one with rich, complete content.`;
   }
 
   private academicSession(): string {

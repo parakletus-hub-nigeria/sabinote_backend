@@ -1,4 +1,5 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GenerateNoteDto } from './dto/generate-note.dto';
@@ -21,6 +22,18 @@ export class GenerationController {
   @HttpCode(HttpStatus.OK)
   async generateNote(@CurrentUser() user: { userId: string }, @Body() dto: GenerateNoteDto) {
     return { success: true, data: await this.generationService.generateNote(user.userId, dto) };
+  }
+
+  // Streaming variant — Server-Sent Events. Pre-check failures still return a
+  // normal JSON error (thrown before the stream opens); once streaming starts,
+  // progress is emitted as `token` events and the result as a final `done` event.
+  @Post('lesson-note/stream')
+  async streamNote(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: GenerateNoteDto,
+    @Res() res: Response,
+  ) {
+    await this.generationService.streamNote(user.userId, dto, res);
   }
 
   @Post('regenerate')
