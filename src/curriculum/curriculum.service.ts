@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
 import { SeedCurriculumDto } from './dto/seed-curriculum.dto';
@@ -33,6 +33,8 @@ const TTL = {
 
 @Injectable()
 export class CurriculumService {
+  private readonly logger = new Logger(CurriculumService.name);
+
   constructor(
     private prisma: PrismaService,
     private cache: CacheService,
@@ -95,7 +97,25 @@ export class CurriculumService {
     );
     // Invalidate all curriculum caches — general curriculum data changed
     await this.cache.delByPrefix('cur:');
-    return { upserted: results.filter((r) => r.status === 'fulfilled').length, total: dto.weeks.length };
+
+    const failures = results.filter(
+      (r): r is PromiseRejectedResult => r.status === 'rejected',
+    );
+    if (failures.length) {
+      const first = failures[0].reason;
+      this.logger.error(
+        `seedGeneral: ${failures.length}/${dto.weeks.length} rows failed. First error: ${first?.message ?? first}`,
+      );
+    }
+
+    return {
+      upserted: results.length - failures.length,
+      failed: failures.length,
+      total: dto.weeks.length,
+      ...(failures.length
+        ? { firstError: String(failures[0].reason?.message ?? failures[0].reason).slice(0, 300) }
+        : {}),
+    };
   }
 
   // ─── Fallback-aware browse endpoints ─────────────────────────────────────
