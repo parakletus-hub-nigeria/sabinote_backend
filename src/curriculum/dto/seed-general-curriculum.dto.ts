@@ -13,6 +13,10 @@ export class GeneralCurriculumWeekDto {
   @IsOptional() @IsString() teachingAids?: string;
   @IsOptional() @IsString() evaluation?: string;
   @IsOptional() @IsString() referenceText?: string;
+  // Curriculum edition — `year` participates in the unique key so multiple
+  // editions (e.g. 2023 and 2025) of the same subject/class/term/week coexist.
+  @IsOptional() @IsString() year?: string;
+  @IsOptional() @IsString() version?: string;
 }
 
 export class SeedGeneralCurriculumDto {

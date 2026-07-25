@@ -75,17 +75,23 @@ export class CurriculumService {
 
   async seedGeneral(dto: SeedGeneralCurriculumDto) {
     const results = await Promise.allSettled(
-      dto.weeks.map((w) =>
-        this.prisma.generalCurriculum.upsert({
+      dto.weeks.map(async (w) => {
+        // `year` is part of the unique key but nullable, which upsert handles
+        // poorly — match manually, then update by primary key or create.
+        const existing = await this.prisma.generalCurriculum.findFirst({
           where: {
-            subject_classLevel_term_week: {
-              subject: w.subject, classLevel: w.classLevel, term: w.term, week: w.week,
-            },
+            subject: w.subject, classLevel: w.classLevel,
+            term: w.term, week: w.week, year: w.year ?? null,
           },
-          update: w,
-          create: w,
-        }),
-      ),
+          select: { generalCurriculumId: true },
+        });
+        return existing
+          ? this.prisma.generalCurriculum.update({
+              where: { generalCurriculumId: existing.generalCurriculumId },
+              data: w,
+            })
+          : this.prisma.generalCurriculum.create({ data: w });
+      }),
     );
     // Invalidate all curriculum caches — general curriculum data changed
     await this.cache.delByPrefix('cur:');
@@ -184,8 +190,11 @@ export class CurriculumService {
 
         if (stateRow) return { source: 'state', id: stateRow.curriculumWeekId, ...stateRow };
 
-        const generalRow = await this.prisma.generalCurriculum.findUnique({
-          where: { subject_classLevel_term_week: { subject, classLevel, term, week } },
+        // Prefer the most recent curriculum edition; a real year (e.g. "2025")
+        // outranks legacy rows that predate the year field (null sorts last).
+        const generalRow = await this.prisma.generalCurriculum.findFirst({
+          where: { subject, classLevel, term, week },
+          orderBy: { year: { sort: 'desc', nulls: 'last' } },
         });
 
         if (generalRow) return { source: 'general', id: generalRow.generalCurriculumId, state, ...generalRow };

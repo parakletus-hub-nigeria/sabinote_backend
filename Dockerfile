@@ -24,5 +24,9 @@ RUN npm run build
 # Expose the standard port
 EXPOSE 8080
 
-# Start the compiled production server
-CMD ["node", "dist/src/main.js"]
+# Apply any pending DB migrations, then start the compiled production server.
+# migrate deploy runs at container startup (not build time) so it has the live
+# DATABASE_URL; it only applies already-created migrations and never generates
+# new ones. If a migration fails the container won't boot — fail-fast is safer
+# than serving against a half-migrated schema.
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main.js"]
