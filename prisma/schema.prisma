@@ -181,6 +181,8 @@ model GeneralCurriculum {
   term                Int      @db.SmallInt
   week                Int      @db.SmallInt
   topic               String   @db.VarChar(255)
+  version             String?   @db.VarChar(255)
+  year                String?   @db.VarChar(255)
   subTopics           String[]
   objectives          String[]
   teachingActivities  String?
@@ -190,8 +192,8 @@ model GeneralCurriculum {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  @@unique([subject, classLevel, term, week])
-  @@index([subject, classLevel], name: "idx_general_curriculum_subject")
+  @@unique([subject, classLevel, term, week, year])
+  @@index([subject, classLevel, year], name: "idx_general_curriculum_subject")
 }
 
 model UserResource {
