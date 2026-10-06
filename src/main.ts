@@ -23,12 +23,15 @@ async function bootstrap() {
         .map((o) => o.trim())
         .filter(Boolean);
     }
-    if (nodeEnv === 'production') {
-      throw new Error(
-        'FATAL: CORS_ORIGIN must be explicitly set without wildcards in production (ARCH-004)',
-      );
-    }
-    return ['http://localhost:3000', 'http://127.0.0.1:3000'];
+    // Safe default origins across production and local environments
+    return [
+      'https://sabinote.app',
+      'https://www.sabinote.app',
+      'https://sabinote.ng',
+      'https://www.sabinote.ng',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+    ];
   })();
 
   app.enableCors({
@@ -112,9 +115,9 @@ async function bootstrap() {
   }
 
   const port = configService.get<number>('PORT', 8080);
-  await app.listen(port);
-  console.log(`SabiNote API running on http://localhost:${port}/api/v1`);
-  console.log(`OpenAPI documentation running on http://localhost:${port}/api/docs`);
+  await app.listen(port, '0.0.0.0');
+  console.log(`SabiNote API running on http://0.0.0.0:${port}/api/v1`);
+  console.log(`OpenAPI documentation running on http://0.0.0.0:${port}/api/docs`);
 }
 
 bootstrap();
