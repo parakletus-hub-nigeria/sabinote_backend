@@ -174,6 +174,25 @@ export class ExportService {
         </tbody>
       </table>
 
+      ${plan.commonMisconceptions && plan.commonMisconceptions.length > 0 ? `
+      ${this.htmlSection('COMMON MISCONCEPTIONS')}
+      <div style="border-left: 4px solid #555; padding-left: 10px; margin-bottom: 12px; font-family:'Times New Roman',Times,serif;font-size:12pt;">
+        ${plan.commonMisconceptions.map((mc, i) => `
+          <div style="margin-bottom: 8px;">
+            <p style="margin: 0;"><strong>Misconception ${i + 1}: ${html(mc.description)}</strong></p>
+            <p style="margin: 0;">This typically occurs because ${html(mc.reason)}</p>
+            <p style="margin: 0;"><em>${html(mc.correction)}</em></p>
+          </div>
+        `).join('')}
+      </div>` : ''}
+
+      ${plan.differentiation ? `
+      ${this.htmlSection('DIFFERENTIATION')}
+      <div style="font-family:'Times New Roman',Times,serif;font-size:12pt;margin-bottom:12px;">
+        <p><em>For students who need support:</em><br/>${html(plan.differentiation.support)}</p>
+        <p><em>For advanced students:</em><br/>${html(plan.differentiation.extension)}</p>
+      </div>` : ''}
+
       ${this.htmlSection('EVALUATION')}
       <ol>${plan.evaluation.map((q) => `<li>${html(q)}</li>`).join('')}</ol>
 
@@ -368,6 +387,26 @@ export class ExportService {
     this.pdfSection(doc, 'PRESENTATION');
     this.pdfPresentationTablePlan(doc, plan.presentation);
     doc.moveDown(0.5);
+
+    if (plan.commonMisconceptions && plan.commonMisconceptions.length > 0) {
+      this.pdfSection(doc, 'COMMON MISCONCEPTIONS');
+      plan.commonMisconceptions.forEach((mc, i) => {
+        doc.fontSize(11).font('Times-Bold').text(`Misconception ${i + 1}: ${plain(mc.description)}`, this.LEFT + 10, doc.y);
+        doc.fontSize(11).font('Times-Roman').text(`Reason: ${plain(mc.reason)}`, this.LEFT + 20, doc.y);
+        doc.fontSize(11).font('Times-Italic').text(`Correction: ${plain(mc.correction)}`, this.LEFT + 20, doc.y);
+        doc.moveDown(0.3);
+      });
+      doc.moveDown(0.5);
+    }
+
+    if (plan.differentiation) {
+      this.pdfSection(doc, 'DIFFERENTIATION');
+      doc.fontSize(11).font('Times-Bold').text('Support for Struggling Learners:', this.LEFT + 10, doc.y);
+      this.pdfText(doc, plain(plan.differentiation.support), 20);
+      doc.fontSize(11).font('Times-Bold').text('Extension for Fast Learners:', this.LEFT + 10, doc.y);
+      this.pdfText(doc, plain(plan.differentiation.extension), 20);
+      doc.moveDown(0.5);
+    }
 
     this.pdfSection(doc, 'EVALUATION');
     plan.evaluation.forEach((q, i) => this.pdfText(doc, `${i + 1}.  ${plain(q)}`));

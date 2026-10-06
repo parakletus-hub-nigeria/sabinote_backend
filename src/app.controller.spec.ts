@@ -35,14 +35,14 @@ describe('AppController', () => {
     it('should return current system version manifest', () => {
       const res = appController.getVersion();
       expect(res.success).toBe(true);
-      expect(res.data.version).toBe('2.0.1');
+      expect(res.data.version).toBe(PLATFORM_RELEASE_MANIFEST.current.version);
       expect(res.data.curriculumBaseline.totalUnits).toBe(6182);
     });
 
     it('should return full release history', () => {
       const res = appController.getReleases();
       expect(res.success).toBe(true);
-      expect(res.data.current.version).toBe('2.0.1');
+      expect(res.data.current.version).toBe(PLATFORM_RELEASE_MANIFEST.current.version);
       expect(res.data.history.length).toBeGreaterThan(0);
     });
   });
