@@ -29,6 +29,34 @@
         ]
       }
     },
+    "/api/v1/system/version": {
+      "get": {
+        "operationId": "AppController_getVersion",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "App"
+        ]
+      }
+    },
+    "/api/v1/system/releases": {
+      "get": {
+        "operationId": "AppController_getReleases",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "App"
+        ]
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "operationId": "AuthController_register",
