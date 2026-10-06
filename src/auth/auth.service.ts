@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -20,7 +21,133 @@ export class AuthService {
     private configService: ConfigService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  async createSession(
+    userId: string,
+    refreshToken: string,
+    meta?: { userAgent?: string; ipAddress?: string },
+  ) {
+    const tokenHash = this.hashToken(refreshToken);
+    const familyId = randomUUID();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    return this.prisma.refreshSession.create({
+      data: {
+        userId,
+        tokenHash,
+        familyId,
+        userAgent: meta?.userAgent,
+        ipAddress: meta?.ipAddress,
+        expiresAt,
+      },
+    });
+  }
+
+  async rotateSession(
+    userId: string,
+    oldRefreshToken: string,
+    meta?: { userAgent?: string; ipAddress?: string },
+  ) {
+    const oldHash = this.hashToken(oldRefreshToken);
+    const existing = await this.prisma.refreshSession.findUnique({
+      where: { tokenHash: oldHash },
+    });
+
+    if (!existing) {
+      // Fall back to issuing a new session if old token wasn't tracked yet (legacy migration)
+      const user = await this.prisma.user.findUnique({
+        where: { userId },
+        select: { userId: true, email: true, role: true },
+      });
+      if (!user) throw new UnauthorizedException('User not found');
+      const tokens = this.generateTokens(user.userId, user.email, user.role);
+      await this.createSession(user.userId, tokens.refreshToken, meta);
+      return tokens;
+    }
+
+    if (existing.isRevoked) {
+      // ARCH-005: Reuse detected! Compromised token family — revoke entire family
+      await this.prisma.refreshSession.updateMany({
+        where: { familyId: existing.familyId },
+        data: {
+          isRevoked: true,
+          revokedAt: new Date(),
+          revokedReason: 'reuse_detected',
+        },
+      });
+      throw new UnauthorizedException(
+        'Refresh token reuse detected; all sessions revoked for security (ARCH-005)',
+      );
+    }
+
+    if (existing.expiresAt < new Date()) {
+      throw new UnauthorizedException('Refresh session has expired');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { userId },
+      select: { userId: true, email: true, role: true },
+    });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const tokens = this.generateTokens(user.userId, user.email, user.role);
+    const newHash = this.hashToken(tokens.refreshToken);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    await this.prisma.$transaction([
+      this.prisma.refreshSession.update({
+        where: { sessionId: existing.sessionId },
+        data: {
+          isRevoked: true,
+          revokedAt: new Date(),
+          revokedReason: 'rotated',
+        },
+      }),
+      this.prisma.refreshSession.create({
+        data: {
+          userId: user.userId,
+          tokenHash: newHash,
+          familyId: existing.familyId,
+          userAgent: meta?.userAgent || existing.userAgent,
+          ipAddress: meta?.ipAddress || existing.ipAddress,
+          expiresAt,
+        },
+      }),
+    ]);
+
+    return tokens;
+  }
+
+  async logout(userId: string, refreshToken?: string) {
+    if (refreshToken) {
+      const tokenHash = this.hashToken(refreshToken);
+      await this.prisma.refreshSession.updateMany({
+        where: { tokenHash, userId },
+        data: {
+          isRevoked: true,
+          revokedAt: new Date(),
+          revokedReason: 'user_logout',
+        },
+      });
+    } else {
+      await this.prisma.refreshSession.updateMany({
+        where: { userId, isRevoked: false },
+        data: {
+          isRevoked: true,
+          revokedAt: new Date(),
+          revokedReason: 'user_logout_all',
+        },
+      });
+    }
+  }
+
+  async register(
+    dto: RegisterDto,
+    meta?: { userAgent?: string; ipAddress?: string },
+  ) {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email.toLowerCase() },
     });
@@ -65,6 +192,7 @@ export class AuthService {
     });
 
     const tokens = this.generateTokens(user.userId, user.email, user.role);
+    await this.createSession(user.userId, tokens.refreshToken, meta);
 
     return {
       user,
@@ -73,7 +201,10 @@ export class AuthService {
     };
   }
 
-  async login(dto: LoginDto) {
+  async login(
+    dto: LoginDto,
+    meta?: { userAgent?: string; ipAddress?: string },
+  ) {
     const user = await this.validateCredentials(dto.email, dto.password);
 
     if (!user) {
@@ -81,6 +212,7 @@ export class AuthService {
     }
 
     const tokens = this.generateTokens(user.userId, user.email, user.role);
+    await this.createSession(user.userId, tokens.refreshToken, meta);
 
     return {
       user: {
@@ -109,7 +241,15 @@ export class AuthService {
     return user;
   }
 
-  async refreshTokens(userId: string, email: string, role: Role) {
+  async refreshTokens(
+    userId: string,
+    refreshToken?: string,
+    meta?: { userAgent?: string; ipAddress?: string },
+  ) {
+    if (refreshToken) {
+      return this.rotateSession(userId, refreshToken, meta);
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { userId },
       select: { userId: true, email: true, role: true },
@@ -117,7 +257,9 @@ export class AuthService {
 
     if (!user) throw new UnauthorizedException();
 
-    return this.generateTokens(user.userId, user.email, user.role);
+    const tokens = this.generateTokens(user.userId, user.email, user.role);
+    await this.createSession(user.userId, tokens.refreshToken, meta);
+    return tokens;
   }
 
   async getMe(userId: string) {

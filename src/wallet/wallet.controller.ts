@@ -15,6 +15,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { InitiateTopupDto } from './dto/initiate-topup.dto';
 import { WalletService } from './wallet.service';
+import { DevOnlyGuard } from '../common/guards/dev-only.guard';
 
 @Controller('wallet')
 export class WalletController {
@@ -80,8 +81,8 @@ export class WalletController {
     };
   }
 
-  // TODO: TEMPORARY — Remove this endpoint when Paystack is fully integrated
-  @UseGuards(JwtAuthGuard)
+  // Guarded non-production fixture (ARCH-011)
+  @UseGuards(JwtAuthGuard, DevOnlyGuard)
   @Post('topup/manual')
   async manualTopup(
     @CurrentUser() user: { userId: string },

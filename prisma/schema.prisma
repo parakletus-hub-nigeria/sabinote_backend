@@ -78,6 +78,20 @@ enum ConfigType {
   string
 }
 
+enum CurriculumStage {
+  early_years
+  primary
+  junior_secondary
+  senior_secondary
+}
+
+enum ReleaseStatus {
+  draft
+  published
+  superseded
+  archived
+}
+
 // ─── Models ──────────────────────────────────────────────────────────────────
 
 model User {
@@ -102,6 +116,7 @@ model User {
   uploadedResources UserResource[]  @relation("ResourceUploader")
   prompts           UserPrompt[]
   notifications     Notification[]
+  refreshSessions   RefreshSession[]
 }
 
 model UserSettings {
@@ -224,6 +239,8 @@ model LessonNote {
   userId              String
   curriculumWeekId    String?
   generalCurriculumId String?
+  curriculumReleaseId String?
+  curriculumUnitId    String?
   transactionId       String?
   resourceId          String?
 
@@ -249,11 +266,13 @@ model LessonNote {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user           User            @relation(fields: [userId], references: [userId])
-  curriculumWeek CurriculumWeek? @relation(fields: [curriculumWeekId], references: [curriculumWeekId])
-  transaction    Transaction?    @relation(fields: [transactionId], references: [transactionId])
-  resource       UserResource?   @relation(fields: [resourceId], references: [resourceId])
-  prompts        UserPrompt[]
+  user              User                @relation(fields: [userId], references: [userId])
+  curriculumWeek    CurriculumWeek?     @relation(fields: [curriculumWeekId], references: [curriculumWeekId])
+  curriculumRelease CurriculumRelease?  @relation("NoteCurriculumRelease", fields: [curriculumReleaseId], references: [releaseId])
+  curriculumUnit    CurriculumUnit?     @relation("NoteCurriculumUnit", fields: [curriculumUnitId], references: [unitId])
+  transaction       Transaction?        @relation(fields: [transactionId], references: [transactionId])
+  resource          UserResource?       @relation(fields: [resourceId], references: [resourceId])
+  prompts           UserPrompt[]
 
   @@index([userId, createdAt(sort: Desc)], name: "idx_lessonnote_user")
   @@index([userId, subjectName, classLevel], name: "idx_lessonnote_subject")
@@ -292,4 +311,94 @@ model SystemConfig {
   value     String
   type      ConfigType
   updatedAt DateTime   @updatedAt
+}
+
+// ─── v2 Auth Sessions (ARCH-005) ─────────────────────────────────────────────
+
+model RefreshSession {
+  sessionId     String    @id @default(uuid())
+  userId        String
+  tokenHash     String    @unique @db.VarChar(255)
+  familyId      String    @db.VarChar(100)
+  deviceInfo    String?   @db.VarChar(255)
+  ipAddress     String?   @db.VarChar(45)
+  userAgent     String?   @db.VarChar(500)
+  isRevoked     Boolean   @default(false)
+  revokedAt     DateTime?
+  revokedReason String?   @db.VarChar(255)
+  expiresAt     DateTime
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([userId, isRevoked], name: "idx_session_user_revoked")
+  @@index([familyId], name: "idx_session_family")
+}
+
+// ─── v2 Curriculum Releases & Units (ARCH-007) ───────────────────────────────
+
+model CurriculumSource {
+  sourceId     String   @id @default(uuid())
+  code         String   @unique @db.VarChar(50)
+  name         String   @db.VarChar(150)
+  authority    String   @db.VarChar(150)
+  jurisdiction String   @default("National") @db.VarChar(100)
+  websiteUrl   String?  @db.VarChar(255)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  releases CurriculumRelease[]
+}
+
+model CurriculumRelease {
+  releaseId      String          @id @default(uuid())
+  sourceId       String
+  releaseTag     String          @unique @db.VarChar(100)
+  title          String          @db.VarChar(255)
+  stage          CurriculumStage
+  version        String          @db.VarChar(50)
+  status         ReleaseStatus   @default(draft)
+  checksum       String?         @db.VarChar(64)
+  publishedAt    DateTime?
+  supersededById String?
+  supersededAt   DateTime?
+  metadata       Json?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  source       CurriculumSource    @relation(fields: [sourceId], references: [sourceId])
+  supersededBy CurriculumRelease?  @relation("ReleaseSupersession", fields: [supersededById], references: [releaseId])
+  supersedes   CurriculumRelease[] @relation("ReleaseSupersession")
+  units        CurriculumUnit[]
+  notes        LessonNote[]        @relation("NoteCurriculumRelease")
+
+  @@index([stage, status], name: "idx_release_stage_status")
+}
+
+model CurriculumUnit {
+  unitId             String          @id @default(uuid())
+  releaseId          String
+  stage              CurriculumStage
+  classLevel         String          @db.VarChar(30)
+  subject            String          @db.VarChar(150)
+  term               Int             @db.SmallInt
+  week               Int             @db.SmallInt
+  topic              String          @db.VarChar(255)
+  subTopics          String[]
+  learningObjectives String[]
+  competencies       String[]
+  teachingActivities String?
+  teachingAids       String?
+  evaluationGuide    String?
+  referenceMaterials String[]
+  metadata           Json?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  release CurriculumRelease @relation(fields: [releaseId], references: [releaseId], onDelete: Cascade)
+  notes   LessonNote[]      @relation("NoteCurriculumUnit")
+
+  @@unique([releaseId, classLevel, subject, term, week])
+  @@index([releaseId, subject, classLevel, term, week], name: "idx_unit_lookup")
 }

@@ -46,12 +46,19 @@ export class AdminService {
       where: { createdAt: { gte: new Date(new Date().setDate(1)) } },
     });
 
+    const totalParatsCredited = Number(revenueAgg._sum.amountAdded ?? 0);
+
     return {
       totalUsers,
       totalNotes,
       notesThisMonth,
       totalTopups: totalTransactions,
-      totalRevenueNGN: revenueAgg._sum.amountAdded ?? 0,
+      totalParatsCredited,
+      /**
+       * @deprecated totalRevenueNGN is preserved for backward compatibility with v1 frontend,
+       * but represents Parats credited, not fiat Naira revenue (ARCH-012).
+       */
+      totalRevenueNGN: totalParatsCredited,
     };
   }
 

@@ -1,6 +1,9 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsOptional } from 'class-validator';
 
 export class UpdateNoteDto {
-  @IsOptional() @IsString() lessonPlanContent?: string;
-  @IsOptional() @IsString() lessonNoteContent?: string;
+  @IsOptional()
+  lessonPlanContent?: Record<string, any> | string;
+
+  @IsOptional()
+  lessonNoteContent?: Record<string, any> | string;
 }

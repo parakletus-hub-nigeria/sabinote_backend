@@ -1,0 +1,1615 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1": {
+      "get": {
+        "operationId": "AppController_getRoot",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "App"
+        ]
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "AppController_getHealth",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "App"
+        ]
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "operationId": "AuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "operationId": "AuthController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/users/profile": {
+      "get": {
+        "operationId": "UsersController_getProfile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      },
+      "patch": {
+        "operationId": "UsersController_updateProfile",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/v1/users/settings": {
+      "get": {
+        "operationId": "UsersController_getSettings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      },
+      "patch": {
+        "operationId": "UsersController_updateSettings",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/v1/users/account": {
+      "delete": {
+        "operationId": "UsersController_deleteAccount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/v1/wallet": {
+      "get": {
+        "operationId": "WalletController_getBalance",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Wallet"
+        ]
+      }
+    },
+    "/api/v1/wallet/transactions": {
+      "get": {
+        "operationId": "WalletController_getTransactions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Wallet"
+        ]
+      }
+    },
+    "/api/v1/wallet/packages": {
+      "get": {
+        "operationId": "WalletController_getPackages",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Wallet"
+        ]
+      }
+    },
+    "/api/v1/wallet/topup/initiate": {
+      "post": {
+        "operationId": "WalletController_initiateTopup",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitiateTopupDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Wallet"
+        ]
+      }
+    },
+    "/api/v1/wallet/topup/verify": {
+      "post": {
+        "operationId": "WalletController_verifyTopup",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Wallet"
+        ]
+      }
+    },
+    "/api/v1/wallet/topup/manual": {
+      "post": {
+        "operationId": "WalletController_manualTopup",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitiateTopupDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Wallet"
+        ]
+      }
+    },
+    "/api/v1/wallet/webhook": {
+      "post": {
+        "operationId": "WalletController_webhook",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Wallet"
+        ]
+      }
+    },
+    "/api/v1/curriculum/releases": {
+      "get": {
+        "description": "Browse published and draft curriculum releases filtered optionally by stage and status.",
+        "operationId": "CurriculumController_getReleases",
+        "parameters": [
+          {
+            "name": "stage",
+            "required": false,
+            "in": "query",
+            "description": "Filter curriculum releases by educational stage",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "early_years",
+                "primary",
+                "junior_secondary",
+                "senior_secondary"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Filter curriculum releases by status (draft, published, superseded, archived)",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "superseded",
+                "archived"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of matching curriculum releases."
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Browse curriculum releases",
+        "tags": [
+          "Curriculum"
+        ]
+      },
+      "post": {
+        "description": "Creates a new versioned release entity (e.g. NERDC-JSS-2025.1, SABINOTE-ECE-2025.1).",
+        "operationId": "CurriculumController_createRelease",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCurriculumReleaseDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Curriculum release successfully created."
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Create a new curriculum release (Admin)",
+        "tags": [
+          "Curriculum"
+        ]
+      }
+    },
+    "/api/v1/curriculum/releases/{id}/units": {
+      "post": {
+        "description": "Bulk imports or upserts canonical curriculum units for a specific release ID.",
+        "operationId": "CurriculumController_seedUnits",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Curriculum Release UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeedCurriculumUnitsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Units imported/upserted successfully."
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Import and seed versioned units (Admin)",
+        "tags": [
+          "Curriculum"
+        ]
+      },
+      "get": {
+        "description": "Query units belonging to a specific release filtered by classLevel, subject, term, and week.",
+        "operationId": "CurriculumController_getUnits",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Curriculum Release UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "classLevel",
+            "required": false,
+            "in": "query",
+            "description": "Filter by class level",
+            "schema": {
+              "example": "JSS 1",
+              "type": "string"
+            }
+          },
+          {
+            "name": "subject",
+            "required": false,
+            "in": "query",
+            "description": "Filter by subject name",
+            "schema": {
+              "example": "Mathematics",
+              "type": "string"
+            }
+          },
+          {
+            "name": "term",
+            "required": false,
+            "in": "query",
+            "description": "Filter by academic term (1, 2, 3)",
+            "schema": {
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "week",
+            "required": false,
+            "in": "query",
+            "description": "Filter by week number (1 to 13)",
+            "schema": {
+              "example": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of matching curriculum units."
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Query versioned units for a release",
+        "tags": [
+          "Curriculum"
+        ]
+      }
+    },
+    "/api/v1/curriculum/states": {
+      "get": {
+        "operationId": "CurriculumController_getStates",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get list of available states",
+        "tags": [
+          "Curriculum"
+        ]
+      }
+    },
+    "/api/v1/curriculum/subjects": {
+      "get": {
+        "description": "Merges subjects from published curriculum units, state tables, and general tables.",
+        "operationId": "CurriculumController_getSubjects",
+        "parameters": [
+          {
+            "name": "state",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "classLevel",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get subjects for a state and class level",
+        "tags": [
+          "Curriculum"
+        ]
+      }
+    },
+    "/api/v1/curriculum/weeks": {
+      "get": {
+        "description": "Resolves weeks from published CurriculumUnit releases first, gracefully falling back to legacy state and general rows.",
+        "operationId": "CurriculumController_getWeeks",
+        "parameters": [
+          {
+            "name": "state",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subject",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "classLevel",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "term",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get weeks list (Dual-Read Engine)",
+        "tags": [
+          "Curriculum"
+        ]
+      }
+    },
+    "/api/v1/curriculum/week": {
+      "get": {
+        "operationId": "CurriculumController_getWeek",
+        "parameters": [
+          {
+            "name": "state",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subject",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "classLevel",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "term",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "week",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get a single week curriculum content (Dual-Read Engine)",
+        "tags": [
+          "Curriculum"
+        ]
+      }
+    },
+    "/api/v1/curriculum/seed": {
+      "post": {
+        "operationId": "CurriculumController_seed",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeedCurriculumDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Seed legacy state curriculum weeks (Admin)",
+        "tags": [
+          "Curriculum"
+        ]
+      }
+    },
+    "/api/v1/curriculum/general/seed": {
+      "post": {
+        "operationId": "CurriculumController_seedGeneral",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeedGeneralCurriculumDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Seed legacy national general curriculum weeks (Admin)",
+        "tags": [
+          "Curriculum"
+        ]
+      }
+    },
+    "/api/v1/notes": {
+      "get": {
+        "operationId": "NotesController_list",
+        "parameters": [
+          {
+            "name": "subject",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "classLevel",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notes"
+        ]
+      }
+    },
+    "/api/v1/notes/search": {
+      "get": {
+        "operationId": "NotesController_search",
+        "parameters": [
+          {
+            "name": "q",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subject",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "classLevel",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notes"
+        ]
+      }
+    },
+    "/api/v1/notes/{noteId}": {
+      "get": {
+        "operationId": "NotesController_findOne",
+        "parameters": [
+          {
+            "name": "noteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notes"
+        ]
+      },
+      "patch": {
+        "operationId": "NotesController_update",
+        "parameters": [
+          {
+            "name": "noteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNoteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notes"
+        ]
+      },
+      "delete": {
+        "operationId": "NotesController_delete",
+        "parameters": [
+          {
+            "name": "noteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notes"
+        ]
+      }
+    },
+    "/api/v1/notifications": {
+      "get": {
+        "operationId": "NotificationsController_getAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/read-all": {
+      "patch": {
+        "operationId": "NotificationsController_markAllRead",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/{id}/read": {
+      "patch": {
+        "operationId": "NotificationsController_markRead",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/v1/generate/lesson-plan": {
+      "post": {
+        "operationId": "GenerationController_generatePlan",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeneratePlanDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Generation"
+        ]
+      }
+    },
+    "/api/v1/generate/lesson-note": {
+      "post": {
+        "operationId": "GenerationController_generateNote",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateNoteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Generation"
+        ]
+      }
+    },
+    "/api/v1/generate/lesson-note/stream": {
+      "post": {
+        "operationId": "GenerationController_streamNote",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateNoteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Generation"
+        ]
+      }
+    },
+    "/api/v1/generate/regenerate": {
+      "post": {
+        "operationId": "GenerationController_regenerate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegenerateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Generation"
+        ]
+      }
+    },
+    "/api/v1/resources": {
+      "get": {
+        "operationId": "ResourcesController_list",
+        "parameters": [
+          {
+            "name": "state",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subject",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "classLevel",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Resources"
+        ]
+      }
+    },
+    "/api/v1/resources/upload": {
+      "post": {
+        "operationId": "ResourcesController_upload",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Resources"
+        ]
+      }
+    },
+    "/api/v1/resources/{resourceId}": {
+      "delete": {
+        "operationId": "ResourcesController_delete",
+        "parameters": [
+          {
+            "name": "resourceId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Resources"
+        ]
+      }
+    },
+    "/api/v1/resources/match": {
+      "get": {
+        "operationId": "ResourcesController_match",
+        "parameters": [
+          {
+            "name": "state",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subject",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "classLevel",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Resources"
+        ]
+      }
+    },
+    "/api/v1/export/{noteId}/pdf": {
+      "post": {
+        "operationId": "ExportController_exportPdf",
+        "parameters": [
+          {
+            "name": "noteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/api/v1/export/{noteId}/docx": {
+      "post": {
+        "operationId": "ExportController_exportDocx",
+        "parameters": [
+          {
+            "name": "noteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Export"
+        ]
+      }
+    },
+    "/api/v1/admin/users": {
+      "get": {
+        "operationId": "AdminController_getUsers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/v1/admin/stats": {
+      "get": {
+        "operationId": "AdminController_getStats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/v1/admin/curriculum/seed": {
+      "post": {
+        "operationId": "AdminController_seedCurriculum",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeedCurriculumDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/v1/admin/credit": {
+      "post": {
+        "operationId": "AdminController_credit",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditWalletDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/v1/admin/transactions": {
+      "get": {
+        "operationId": "AdminController_getTransactions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/v1/admin/resources/upload": {
+      "post": {
+        "operationId": "AdminController_uploadResource",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "SabiNote API",
+    "description": "SabiNote Education Platform API — Grounded Nigerian Lesson & Curriculum Engine",
+    "version": "2.0.0-baseline",
+    "contact": {}
+  },
+  "tags": [
+    {
+      "name": "Auth",
+      "description": ""
+    },
+    {
+      "name": "Users",
+      "description": ""
+    },
+    {
+      "name": "Curriculum",
+      "description": ""
+    },
+    {
+      "name": "Generation",
+      "description": ""
+    },
+    {
+      "name": "Notes",
+      "description": ""
+    },
+    {
+      "name": "Wallet",
+      "description": ""
+    },
+    {
+      "name": "Resources",
+      "description": ""
+    },
+    {
+      "name": "Admin",
+      "description": ""
+    }
+  ],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "JWT-auth": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http",
+        "name": "Authorization",
+        "in": "header"
+      }
+    },
+    "schemas": {
+      "RegisterDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RefreshTokenDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateProfileDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateSettingsDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "InitiateTopupDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateCurriculumReleaseDto": {
+        "type": "object",
+        "properties": {
+          "releaseTag": {
+            "type": "string",
+            "example": "NERDC-JSS-2025.1",
+            "description": "Unique release tag"
+          },
+          "title": {
+            "type": "string",
+            "example": "NERDC Junior Secondary Curriculum 2025.1",
+            "description": "Descriptive title of the curriculum release"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "early_years",
+              "primary",
+              "junior_secondary",
+              "senior_secondary"
+            ],
+            "example": "junior_secondary",
+            "description": "Curriculum educational stage"
+          },
+          "version": {
+            "type": "string",
+            "example": "2025.1",
+            "description": "Semantic version or year edition tag"
+          },
+          "sourceCode": {
+            "type": "string",
+            "example": "NERDC",
+            "description": "Curriculum source authority code (e.g., NERDC, NAPPS, LEGACY)",
+            "default": "NERDC"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "Direct CurriculumSource UUID if known"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published",
+              "superseded",
+              "archived"
+            ],
+            "default": "draft",
+            "description": "Release publishing status"
+          },
+          "checksum": {
+            "type": "string",
+            "description": "Checksum hash for provenance and tamper verification"
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Extensible JSON metadata"
+          }
+        },
+        "required": [
+          "releaseTag",
+          "title",
+          "stage",
+          "version"
+        ]
+      },
+      "CurriculumUnitInputDto": {
+        "type": "object",
+        "properties": {
+          "classLevel": {
+            "type": "string",
+            "example": "JSS 1",
+            "description": "Class level designation"
+          },
+          "subject": {
+            "type": "string",
+            "example": "Mathematics",
+            "description": "Subject name"
+          },
+          "term": {
+            "type": "number",
+            "example": 1,
+            "description": "Academic term (1, 2, or 3)"
+          },
+          "week": {
+            "type": "number",
+            "example": 1,
+            "description": "Curriculum week number (1 to 13)"
+          },
+          "topic": {
+            "type": "string",
+            "example": "Whole Numbers",
+            "description": "Main topic of instruction"
+          },
+          "subTopics": {
+            "description": "Subtopics covered in this unit",
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "learningObjectives": {
+            "description": "Measurable student learning objectives",
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "competencies": {
+            "description": "Key competencies developed (e.g. Critical Thinking, Numeracy)",
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "teachingActivities": {
+            "type": "string",
+            "description": "Detailed teacher and student learning activities"
+          },
+          "teachingAids": {
+            "type": "string",
+            "description": "Recommended teaching aids and materials"
+          },
+          "evaluationGuide": {
+            "type": "string",
+            "description": "Evaluation guide and assessment questions"
+          },
+          "referenceMaterials": {
+            "description": "Recommended textbooks and reference materials",
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Arbitrary structured metadata"
+          }
+        },
+        "required": [
+          "classLevel",
+          "subject",
+          "term",
+          "week",
+          "topic"
+        ]
+      },
+      "SeedCurriculumUnitsDto": {
+        "type": "object",
+        "properties": {
+          "units": {
+            "description": "Array of versioned curriculum units to import or seed",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CurriculumUnitInputDto"
+            }
+          }
+        },
+        "required": [
+          "units"
+        ]
+      },
+      "SeedCurriculumDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SeedGeneralCurriculumDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateNoteDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "GeneratePlanDto": {
+        "type": "object",
+        "properties": {
+          "curriculumUnitId": {
+            "type": "string",
+            "description": "ID from versioned CurriculumUnit (v2 release-first)"
+          },
+          "curriculumWeekId": {
+            "type": "string",
+            "description": "ID from CurriculumWeek (state-specific)"
+          },
+          "generalCurriculumId": {
+            "type": "string",
+            "description": "ID from GeneralCurriculum (legacy national fallback)"
+          },
+          "durationMinutes": {
+            "type": "number",
+            "example": 45,
+            "description": "Duration of lesson in minutes"
+          },
+          "resourceId": {
+            "type": "string",
+            "description": "Optional uploaded resource ID for RAG grounding"
+          }
+        },
+        "required": [
+          "durationMinutes"
+        ]
+      },
+      "GenerateNoteDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RegenerateDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreditWalletDto": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  }
+}

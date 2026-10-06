@@ -38,9 +38,29 @@ export class NotesService {
 
   async update(userId: string, noteId: string, dto: UpdateNoteDto) {
     await this.findOne(userId, noteId);
+
+    const safeParse = (val: any) => {
+      if (typeof val === 'string') {
+        try {
+          return JSON.parse(val);
+        } catch {
+          return val;
+        }
+      }
+      return val;
+    };
+
+    const data: Record<string, any> = { updatedAt: new Date() };
+    if (dto.lessonPlanContent !== undefined) {
+      data.lessonPlanContent = safeParse(dto.lessonPlanContent);
+    }
+    if (dto.lessonNoteContent !== undefined) {
+      data.lessonNoteContent = safeParse(dto.lessonNoteContent);
+    }
+
     return this.prisma.lessonNote.update({
       where: { noteId },
-      data: { ...dto, updatedAt: new Date() },
+      data,
       select: { noteId: true, updatedAt: true },
     });
   }

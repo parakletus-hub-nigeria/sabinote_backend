@@ -15,8 +15,19 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('should return API metadata and status', () => {
+      const res = appController.getRoot();
+      expect(res.success).toBe(true);
+      expect(res.data.name).toBe('SabiNote API');
+      expect(res.data.version).toBe('v2.0.0-baseline');
+      expect(res.data.status).toBe('healthy');
+    });
+
+    it('should return health check details', () => {
+      const res = appController.getHealth();
+      expect(res.status).toBe('ok');
+      expect(res.version).toBe('v2.0.0-baseline');
+      expect(res.uptime).toBeDefined();
     });
   });
 });

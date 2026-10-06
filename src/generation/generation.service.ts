@@ -89,8 +89,8 @@ export class GenerationService {
   // ─── Phase 1: Lesson Plan ────────────────────────────────────────────────
 
   async generatePlan(userId: string, dto: GeneratePlanDto) {
-    if (!dto.curriculumWeekId && !dto.generalCurriculumId) {
-      throw new BadRequestException('Provide either curriculumWeekId or generalCurriculumId');
+    if (!dto.curriculumUnitId && !dto.curriculumWeekId && !dto.generalCurriculumId) {
+      throw new BadRequestException('Provide either curriculumUnitId, curriculumWeekId, or generalCurriculumId');
     }
 
     const session = this.academicSession();
@@ -108,7 +108,9 @@ export class GenerationService {
     const difficulty = user?.settings?.noteDifficultyLevel ?? 'standard';
     const teacherState = user?.state ?? user?.settings?.defaultState ?? 'Federal';
 
-    const curriculum = await (dto.curriculumWeekId
+    const curriculum = await (dto.curriculumUnitId
+      ? this.curriculumService.getUnitById(dto.curriculumUnitId, teacherState)
+      : dto.curriculumWeekId
       ? this.curriculumService.getStateWeekById(dto.curriculumWeekId)
       : this.curriculumService.getGeneralWeekById(dto.generalCurriculumId!, teacherState));
 
@@ -141,6 +143,8 @@ export class GenerationService {
       const lessonNote = await tx.lessonNote.create({
         data: {
           userId,
+          curriculumUnitId: curriculum.unitId ?? (curriculum.source === 'release' ? curriculum.id : undefined),
+          curriculumReleaseId: curriculum.releaseId,
           curriculumWeekId: curriculum.source === 'state' ? curriculum.id : undefined,
           generalCurriculumId: curriculum.source === 'general' ? curriculum.id : undefined,
           transactionId: transaction.transactionId,

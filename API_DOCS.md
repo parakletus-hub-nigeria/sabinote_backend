@@ -412,8 +412,89 @@ List subjects available for a state and class level.
 
 ---
 
+### GET `/curriculum/releases`
+Browse published and draft curriculum releases.
+**Query params:** `stage` (`early_years` | `primary` | `junior_secondary` | `senior_secondary`) · `status` (`draft` | `published` | `superseded` | `archived`)
+
+**Response `200`:**
+```json
+{
+  "success": true,
+  "data": {
+    "releases": [
+      {
+        "releaseId": "uuid",
+        "releaseTag": "NERDC-JSS-2025.1",
+        "title": "NERDC Junior Secondary Curriculum Scheme of Work (2025 Edition)",
+        "stage": "junior_secondary",
+        "version": "2025.1",
+        "status": "published",
+        "publishedAt": "2026-10-06T...",
+        "source": { "code": "NERDC", "name": "Nigerian Educational Research and Development Council" },
+        "_count": { "units": 1107 }
+      }
+    ]
+  }
+}
+```
+
+---
+
+### POST `/curriculum/releases` (Admin)
+Create a new versioned curriculum release.
+**Auth:** Admin only (`role: admin`)
+
+**Body:**
+```json
+{
+  "releaseTag": "NERDC-JSS-2025.1",
+  "title": "NERDC Junior Secondary Curriculum Scheme of Work (2025 Edition)",
+  "stage": "junior_secondary",
+  "version": "2025.1",
+  "sourceCode": "NERDC",
+  "status": "published"
+}
+```
+
+---
+
+### POST `/curriculum/releases/:id/units` (Admin)
+Import and seed versioned curriculum units into a release.
+**Auth:** Admin only (`role: admin`)
+
+**Body:**
+```json
+{
+  "units": [
+    {
+      "classLevel": "JSS 1",
+      "subject": "Mathematics",
+      "term": 1,
+      "week": 1,
+      "topic": "Whole Numbers",
+      "subTopics": ["Place value", "Ordering"],
+      "learningObjectives": ["Identify place values of whole numbers"],
+      "competencies": ["Numeracy", "Critical Thinking"],
+      "teachingActivities": "Use place value chart",
+      "teachingAids": "Charts, counters",
+      "evaluationGuide": "Class exercise on place values",
+      "referenceMaterials": ["NERDC 2025 Mathematics"]
+    }
+  ]
+}
+```
+
+---
+
+### GET `/curriculum/releases/:id/units`
+Query versioned curriculum units for a specific release.
+**Query params:** `classLevel` · `subject` · `term` · `week`
+
+---
+
 ### GET `/curriculum/weeks`
-List all weeks (with topics) for a given context. Use to populate the week picker.
+List all weeks (with topics) for a given context using the Dual-Read Engine.
+Resolves from published `CurriculumUnit` releases first, with graceful fallback to legacy state rows (`CurriculumWeek`) and national rows (`GeneralCurriculum`).
 
 **Query params:** `state` · `subject` · `classLevel` · `term`
 
@@ -425,9 +506,20 @@ List all weeks (with topics) for a given context. Use to populate the week picke
   "success": true,
   "data": {
     "weeks": [
-      { "curriculumWeekId": "uuid", "week": 1, "topic": "Whole Numbers — Place Value" },
-      { "curriculumWeekId": "uuid", "week": 2, "topic": "Whole Numbers — Addition and Subtraction" },
-      { "curriculumWeekId": "uuid", "week": 3, "topic": "Whole Numbers — Multiplication and Division" }
+      {
+        "id": "uuid",
+        "unitId": "uuid",
+        "releaseId": "uuid",
+        "week": 1,
+        "topic": "Whole Numbers — Place Value",
+        "source": "release"
+      },
+      {
+        "id": "uuid",
+        "week": 2,
+        "topic": "Whole Numbers — Addition and Subtraction",
+        "source": "state"
+      }
     ]
   }
 }
