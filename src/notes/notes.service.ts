@@ -1,6 +1,8 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NoteFeedbackDto } from './dto/note-feedback.dto';
 import { UpdateNoteDto } from './dto/update-note.dto';
+import { trackContentDiff } from './telemetry/diff-tracker';
 
 @Injectable()
 export class NotesService {
@@ -33,11 +35,23 @@ export class NotesService {
     const note = await this.prisma.lessonNote.findUnique({ where: { noteId } });
     if (!note) throw new NotFoundException('Note not found');
     if (note.userId !== userId) throw new ForbiddenException();
-    return note;
+
+    const plan = note.lessonPlanContent as Record<string, any> | null;
+    const noteContent = note.lessonNoteContent as Record<string, any> | null;
+    const feedback = noteContent?._feedback ?? plan?._feedback ?? null;
+    const telemetry = noteContent?._telemetry ?? plan?._telemetry ?? null;
+    const grounding = plan?._grounding ?? noteContent?._grounding ?? null;
+
+    return {
+      ...note,
+      feedback,
+      telemetry,
+      grounding,
+    };
   }
 
   async update(userId: string, noteId: string, dto: UpdateNoteDto) {
-    await this.findOne(userId, noteId);
+    const existing = await this.findOne(userId, noteId);
 
     const safeParse = (val: any) => {
       if (typeof val === 'string') {
@@ -51,11 +65,31 @@ export class NotesService {
     };
 
     const data: Record<string, any> = { updatedAt: new Date() };
+
     if (dto.lessonPlanContent !== undefined) {
-      data.lessonPlanContent = safeParse(dto.lessonPlanContent);
+      const parsedPlan = safeParse(dto.lessonPlanContent);
+      const prevPlan = (existing.lessonPlanContent as Record<string, any>) || {};
+      const existingTelemetry = prevPlan._telemetry;
+      const telemetry = trackContentDiff(prevPlan, parsedPlan, existingTelemetry);
+      data.lessonPlanContent = {
+        ...parsedPlan,
+        _telemetry: telemetry,
+        ...(prevPlan._feedback ? { _feedback: prevPlan._feedback } : {}),
+        ...(prevPlan._grounding ? { _grounding: prevPlan._grounding } : {}),
+      };
     }
+
     if (dto.lessonNoteContent !== undefined) {
-      data.lessonNoteContent = safeParse(dto.lessonNoteContent);
+      const parsedNote = safeParse(dto.lessonNoteContent);
+      const prevNote = (existing.lessonNoteContent as Record<string, any>) || {};
+      const existingTelemetry = prevNote._telemetry;
+      const telemetry = trackContentDiff(prevNote, parsedNote, existingTelemetry);
+      data.lessonNoteContent = {
+        ...parsedNote,
+        _telemetry: telemetry,
+        ...(prevNote._feedback ? { _feedback: prevNote._feedback } : {}),
+        ...(prevNote._grounding ? { _grounding: prevNote._grounding } : {}),
+      };
     }
 
     return this.prisma.lessonNote.update({
@@ -63,6 +97,38 @@ export class NotesService {
       data,
       select: { noteId: true, updatedAt: true },
     });
+  }
+
+  async submitFeedback(userId: string, noteId: string, dto: NoteFeedbackDto) {
+    const note = await this.findOne(userId, noteId);
+
+    const feedbackData = {
+      rating: dto.rating,
+      sentiment: dto.sentiment,
+      tags: dto.tags ?? [],
+      comment: dto.comment,
+      submittedAt: new Date().toISOString(),
+    };
+
+    const targetKey = note.lessonNoteContent ? 'lessonNoteContent' : 'lessonPlanContent';
+    const currentContent = (note[targetKey] as Record<string, any>) || {};
+
+    const updatedContent = {
+      ...currentContent,
+      _feedback: feedbackData,
+    };
+
+    await this.prisma.lessonNote.update({
+      where: { noteId },
+      data: {
+        [targetKey]: updatedContent,
+      },
+    });
+
+    return {
+      noteId,
+      feedback: feedbackData,
+    };
   }
 
   async delete(userId: string, noteId: string) {

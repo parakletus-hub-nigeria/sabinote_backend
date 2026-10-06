@@ -11,6 +11,13 @@ export interface TeacherGuideItem {
   description: string;
 }
 
+export interface EducationalComparisonItem {
+  feature: string;
+  whatChanged: string;
+  whyItMattersToTeachers: string;
+  classroomTip: string;
+}
+
 export interface CurrentReleaseInfo {
   version: string;
   versionTag: string;
@@ -21,6 +28,7 @@ export interface CurrentReleaseInfo {
   curriculumBaseline: CurriculumBaselineInfo;
   highlights: string[];
   teacherGuide?: TeacherGuideItem[];
+  educationalComparison?: EducationalComparisonItem[];
 }
 
 export interface HistoricReleaseItem {
@@ -59,6 +67,45 @@ export const PLATFORM_RELEASE_MANIFEST: ReleaseManifest = {
       "Custom Classroom Learning Aids: Pick from suggested local materials or type in your own school resources (e.g. realia, charts, models) to be woven into the lesson.",
       "Pedagogical Focus & Tone: Tailor each lesson for Hands-On Activity, WAEC/BECE Exam Prep, Remedial Scaffolding, or Standard Comprehensive mastery.",
       "Inspector-Approved Differentiated Instruction: Every lesson plan now displays explicit differentiation strategies for struggling vs advanced learners, plus common pupil misconceptions.",
+      "1-Click Teacher Feedback & Pacing Calibration: Directly rate notes (1-5 stars or 👍/👎) and suggest classroom adjustments so the curriculum AI stays tuned to Nigerian schools.",
+    ],
+    educationalComparison: [
+      {
+        feature: "Live 2025 Scheme Preview",
+        whatChanged: "Instant preview of official national scheme of work topics, subtopics, and expected objectives before clicking generate.",
+        whyItMattersToTeachers: "Never guess whether your note matches your state Ministry of Education syllabus; ensures you are on the right week and topic before spending Parats.",
+        classroomTip: "Tap the week number to check subtopics and ensure you cover all curriculum requirements for continuous assessment tests.",
+      },
+      {
+        feature: "Period Pacing Visualizer",
+        whatChanged: "Calculates precise timings for 30, 40, 45, 60, or 80-minute periods broken into Introduction Review, Teacher Demonstration, and Pupil Activity.",
+        whyItMattersToTeachers: "Prevents rushing through lessons or running overtime, and fulfills Ministry inspectors' strict demand for realistic classroom time allocation.",
+        classroomTip: "Select 80 minutes for science laboratory practicals or double-period essay writing to get appropriate hands-on pacing.",
+      },
+      {
+        feature: "Stage-Grounded Bloom's Verbs",
+        whatChanged: "Objectives automatically calibrate for Early Years (sensory & play), Primary (concrete), JSS (logical), or SSS (analytical WAEC level).",
+        whyItMattersToTeachers: "Supervisors won't reject your notes for vague words like 'know' or 'understand'—every objective uses observable action verbs.",
+        classroomTip: "Check the Cognitive, Affective, and Psychomotor tabs in your note to ensure all three learning domains are evaluated.",
+      },
+      {
+        feature: "Classroom Learning Aids Selector",
+        whatChanged: "Choose realia, bottle tops, charts, or type your school's actual lab apparatus directly into the generation screen.",
+        whyItMattersToTeachers: "The lesson note weaves your real materials directly into teaching steps instead of demanding expensive equipment your school lacks.",
+        classroomTip: "Type specific local items like 'school farm cassava leaves' or 'cardboard clocks' so your activities match your physical classroom.",
+      },
+      {
+        feature: "Teacher Quality Feedback & 1-Click Rating",
+        whatChanged: "1-click star rating, classroom sentiment (👍/👎), and quick observations at the bottom of each lesson canvas.",
+        whyItMattersToTeachers: "Gives Nigerian teachers a direct voice to train the AI on real classroom pacing, language simplicity, and local context.",
+        classroomTip: "Tap 'Perfect timing' or 'Needs simpler language' so subsequent notes automatically match your learners' comprehension level.",
+      },
+      {
+        feature: "Misconceptions & Differentiation",
+        whatChanged: "Dedicated sections detailing where pupils get confused, how to guide them, and separate support vs extension tasks.",
+        whyItMattersToTeachers: "Impresses Ministry quality assurance teams by demonstrating planned interventions for both struggling and fast learners.",
+        classroomTip: "Read the Common Misconceptions box during your morning preparation so you can address errors before pupils make them.",
+      },
     ],
     teacherGuide: [
       {
@@ -98,23 +145,25 @@ export const PLATFORM_RELEASE_MANIFEST: ReleaseManifest = {
         'Pedagogical emphasis toggle (Standard, Hands-On, Exam Focus, Remedial)',
         'Differentiated instruction blocks and common student misconceptions for full inspection readiness',
         'Authentic chalkboard/whiteboard layout preview in lesson notes',
+        'Teacher star rating & thumbs feedback loop for continuous quality calibration',
       ],
       changes: {
-        pedagogy: [
-          'Stage detection engine classifying Early Years (ECCDE), Primary (1-6), Junior Secondary (7-9), and Senior Secondary (SS 1-3)',
-          "Domain-specific Bloom's taxonomy action verbs and assessment criteria",
-          'Differentiated instruction strategies tailored for struggling learners and extension learners',
+        teaching_and_pedagogy: [
+          'Automatic stage calibration for Early Years (ECCDE), Primary (1-6), Junior Secondary (7-9), and Senior Secondary (SS 1-3)',
+          "Bloom's taxonomy measurable action verbs and multi-domain assessment criteria",
+          'Tailored differentiated instruction for support learners and high-achiever extensions',
         ],
-        generator_ui: [
-          'Live 2025 scheme preview card with pulsing verified badge',
-          'Interactive period duration visualizer with 3-segment color-coded timeline',
-          'Learning aids selection chips with instant custom resource input',
-          'Pedagogical focus selector (Standard, Hands-On, Exam Focus, Remedial)',
+        lesson_planning_experience: [
+          'Live 2025 scheme preview card with instant verified curriculum check',
+          'Period pacing bar with color-coded 3-segment classroom timeline',
+          'Classroom materials selector with custom school resource entry',
+          'Pedagogical focus toggle (Standard, Hands-On, Exam Focus, Remedial)',
         ],
-        viewer_and_export: [
-          'Chalkboard layout container in lesson notes for authentic board copy presentation',
-          'Teacher vs Pupil role presentation blocks with duration badges',
-          'PDF and Word export enhanced with common misconceptions and differentiation sections',
+        inspection_and_export: [
+          'Chalkboard summary layout for clean blackboard presentation',
+          'Distinct Teacher vs Pupil classroom activities with time badges',
+          'Full PDF and Word download enriched with misconceptions and differentiation',
+          'Classroom quality feedback widget enabling teachers to rate and suggest refinements',
         ],
       },
     },

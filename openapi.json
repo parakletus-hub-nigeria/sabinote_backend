@@ -785,6 +785,39 @@
         ]
       }
     },
+    "/api/v1/notes/{noteId}/feedback": {
+      "post": {
+        "operationId": "NotesController_submitFeedback",
+        "parameters": [
+          {
+            "name": "noteId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteFeedbackDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notes"
+        ]
+      }
+    },
     "/api/v1/notes": {
       "get": {
         "operationId": "NotesController_list",
@@ -1590,6 +1623,10 @@
         "properties": {}
       },
       "SeedGeneralCurriculumDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "NoteFeedbackDto": {
         "type": "object",
         "properties": {}
       },

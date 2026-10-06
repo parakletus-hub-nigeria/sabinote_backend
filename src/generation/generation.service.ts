@@ -179,7 +179,15 @@ export class GenerationService {
           week: curriculum.week,
           state: curriculum.state,
           session,
-          lessonPlanContent: plan as any,
+          lessonPlanContent: {
+            ...plan,
+            _grounding: {
+              score: groundingScore,
+              stage,
+              curriculumReleaseId: curriculum.releaseId,
+              curriculumUnitId: curriculum.unitId ?? (curriculum.source === 'release' ? curriculum.id : undefined),
+            },
+          } as any,
           parratCostPlan: this.planCost,
           phase: NotePhase.plan_only,
           status: NoteStatus.draft,
@@ -270,6 +278,7 @@ export class GenerationService {
       tokensUsed,
       status,
       topic: note.topic,
+      existingPlanContent: note.lessonPlanContent as Record<string, any>,
     });
 
     return {
@@ -301,8 +310,9 @@ export class GenerationService {
     tokensUsed: number;
     status: ResponseStatus;
     topic: string;
+    existingPlanContent?: Record<string, any>;
   }): Promise<number> {
-    const { userId, noteId, wallet, plan, lessonNote, prompt, tokensUsed, status, topic } = params;
+    const { userId, noteId, wallet, plan, lessonNote, prompt, tokensUsed, status, topic, existingPlanContent } = params;
     const newBalance = Number(wallet.balance) - this.noteCost;
 
     await this.prisma.$transaction(async (tx) => {
@@ -322,11 +332,24 @@ export class GenerationService {
 
       await tx.wallet.update({ where: { walletId: wallet.walletId }, data: { balance: newBalance } });
 
+      const existingPlan = existingPlanContent || {};
+      const grounding = existingPlan._grounding;
+      const preservedPlan = {
+        ...plan,
+        ...(grounding ? { _grounding: grounding } : {}),
+        ...(existingPlan._telemetry ? { _telemetry: existingPlan._telemetry } : {}),
+        ...(existingPlan._feedback ? { _feedback: existingPlan._feedback } : {}),
+      };
+      const preservedNote = {
+        ...lessonNote,
+        ...(grounding ? { _grounding: grounding } : {}),
+      };
+
       await tx.lessonNote.update({
         where: { noteId },
         data: {
-          lessonPlanContent: plan as any,
-          lessonNoteContent: lessonNote as any,
+          lessonPlanContent: preservedPlan as any,
+          lessonNoteContent: preservedNote as any,
           phase: NotePhase.complete,
           parratCostNote: this.noteCost,
           transactionId: transaction.transactionId,
@@ -426,6 +449,7 @@ export class GenerationService {
         tokensUsed,
         status: ResponseStatus.success,
         topic: note.topic,
+        existingPlanContent: note.lessonPlanContent as Record<string, any>,
       });
 
       send('done', {

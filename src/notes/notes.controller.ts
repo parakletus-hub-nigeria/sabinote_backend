@@ -1,9 +1,10 @@
 import {
   Body, Controller, Delete, Get, HttpCode, HttpStatus,
-  Param, Patch, Query, UseGuards,
+  Param, Patch, Post, Query, UseGuards,
 } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { NoteFeedbackDto } from './dto/note-feedback.dto';
 import { UpdateNoteDto } from './dto/update-note.dto';
 import { NotesService } from './notes.service';
 
@@ -11,6 +12,16 @@ import { NotesService } from './notes.service';
 @Controller('notes')
 export class NotesController {
   constructor(private notesService: NotesService) {}
+
+  @Post(':noteId/feedback')
+  async submitFeedback(
+    @CurrentUser() user: { userId: string },
+    @Param('noteId') noteId: string,
+    @Body() dto: NoteFeedbackDto,
+  ) {
+    const data = await this.notesService.submitFeedback(user.userId, noteId, dto);
+    return { success: true, data };
+  }
 
   @Get()
   async list(
