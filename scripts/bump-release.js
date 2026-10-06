@@ -103,6 +103,11 @@ export interface CurriculumBaselineInfo {
   lastUpdated: string;
 }
 
+export interface TeacherGuideItem {
+  step: string;
+  description: string;
+}
+
 export interface CurrentReleaseInfo {
   version: string;
   versionTag: string;
@@ -112,6 +117,7 @@ export interface CurrentReleaseInfo {
   environment: string;
   curriculumBaseline: CurriculumBaselineInfo;
   highlights: string[];
+  teacherGuide?: TeacherGuideItem[];
 }
 
 export interface HistoricReleaseItem {
