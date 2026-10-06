@@ -5,6 +5,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [2.0.2] - 2026-10-06
+### Added
+- **Pedagogical Grounding & Classroom Pacing Engine**:
+  - Educational stage classification (Early Years, Primary, JSS, SSS).
+  - Bloom's taxonomy domain classification (Cognitive, Affective, Psychomotor).
+  - Proportional classroom period pacing engine (30–80 mins).
+  - Differentiated instruction & anticipated pupil misconceptions generator.
+- **Reliability & Concurrency Hotfixes**:
+  - ARCH-005 concurrency grace window (10s) in `auth.service.ts` to protect sessions against in-flight refresh collisions.
+  - Auto-provisioning default wallet (24.00 Parats) on `getBalance` and `initiateTopup` in `wallet.service.ts`.
+  - Public packages endpoint (`GET /api/v1/wallet/packages`) without authentication lock.
+
+---
+
 ## [2.0.1] - 2026-10-06
 ### Added
 - **Dual-Read Curriculum Engine (ARCH-007)**:

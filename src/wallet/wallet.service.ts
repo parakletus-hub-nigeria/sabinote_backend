@@ -42,8 +42,17 @@ export class WalletService {
   }
 
   async getBalance(userId: string) {
-    const wallet = await this.prisma.wallet.findUnique({ where: { userId } });
-    if (!wallet) throw new NotFoundException('Wallet not found');
+    let wallet = await this.prisma.wallet.findUnique({ where: { userId } });
+    if (!wallet) {
+      const user = await this.prisma.user.findUnique({ where: { userId } });
+      if (!user) throw new NotFoundException('User not found');
+      wallet = await this.prisma.wallet.create({
+        data: {
+          userId,
+          balance: 24.0,
+        },
+      });
+    }
     return wallet;
   }
 
@@ -73,8 +82,15 @@ export class WalletService {
     });
     if (!user) throw new NotFoundException('User not found');
 
-    const wallet = await this.prisma.wallet.findUnique({ where: { userId } });
-    if (!wallet) throw new NotFoundException('Wallet not found');
+    let wallet = await this.prisma.wallet.findUnique({ where: { userId } });
+    if (!wallet) {
+      wallet = await this.prisma.wallet.create({
+        data: {
+          userId,
+          balance: 24.0,
+        },
+      });
+    }
 
     const reference = `sabi_${Date.now()}_${userId.slice(0, 8)}`;
 

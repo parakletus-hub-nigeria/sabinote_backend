@@ -69,7 +69,38 @@ export class AuthService {
     }
 
     if (existing.isRevoked) {
-      // ARCH-005: Reuse detected! Compromised token family — revoke entire family
+      // ARCH-005 Concurrency Grace Window:
+      // If the token was rotated within the last 10 seconds, a concurrent client request
+      // (e.g. parallel page queries) arrived in-flight with the previous token.
+      // Recover cleanly by returning the valid active token rather than revoking the family.
+      const GRACE_PERIOD_MS = 10_000;
+      const isRecentRotation =
+        existing.revokedReason === 'rotated' &&
+        existing.revokedAt &&
+        Date.now() - new Date(existing.revokedAt).getTime() < GRACE_PERIOD_MS;
+
+      if (isRecentRotation && this.prisma.refreshSession.findFirst) {
+        const latestSession = await this.prisma.refreshSession.findFirst({
+          where: {
+            familyId: existing.familyId,
+            isRevoked: false,
+            expiresAt: { gt: new Date() },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (latestSession) {
+          const user = await this.prisma.user.findUnique({
+            where: { userId },
+            select: { userId: true, email: true, role: true },
+          });
+          if (user) {
+            return this.generateTokens(user.userId, user.email, user.role);
+          }
+        }
+      }
+
+      // ARCH-005: Compromised token family — revoke entire family
       await this.prisma.refreshSession.updateMany({
         where: { familyId: existing.familyId },
         data: {

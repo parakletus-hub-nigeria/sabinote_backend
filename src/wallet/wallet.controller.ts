@@ -47,7 +47,6 @@ export class WalletController {
     };
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get('packages')
   getPackages() {
     return {
