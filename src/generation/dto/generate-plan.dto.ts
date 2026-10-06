@@ -29,4 +29,15 @@ export class GeneratePlanDto {
   @IsOptional()
   @IsUUID()
   resourceId?: string;
+
+  @ApiPropertyOptional({ description: 'Teacher selected classroom learning aids / instructional materials' })
+  @IsOptional()
+  learningAids?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Pedagogical emphasis / tone: standard, hands_on, exam_focus, remedial',
+    example: 'hands_on',
+  })
+  @IsOptional()
+  pedagogicalEmphasis?: string;
 }

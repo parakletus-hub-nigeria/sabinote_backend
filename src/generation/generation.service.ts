@@ -39,6 +39,7 @@ import {
   buildGroundedPlanPrompt,
   buildGroundedNotePrompt,
   calculateGroundingFidelity,
+  GroundedPlanOptions,
 } from './prompts/stage-grounding.prompt';
 
 @Injectable()
@@ -121,7 +122,16 @@ export class GenerationService {
       ? this.curriculumService.getStateWeekById(dto.curriculumWeekId)
       : this.curriculumService.getGeneralWeekById(dto.generalCurriculumId!, teacherState));
 
-    const { prompt, systemPrompt, stage } = this.buildPlanPrompt(curriculum, dto.durationMinutes, difficulty, session);
+    const { prompt, systemPrompt, stage } = this.buildPlanPrompt(
+      curriculum,
+      dto.durationMinutes,
+      difficulty,
+      session,
+      {
+        learningAids: dto.learningAids,
+        pedagogicalEmphasis: dto.pedagogicalEmphasis,
+      },
+    );
     const { data: plan, tokensUsed, status } = await this.callOpenRouter(prompt, LessonPlanSchema, this.planMaxTokens, systemPrompt);
 
     if (!plan) throw new ServiceUnavailableException('AI generation failed. Your Parats were not deducted.');
@@ -733,8 +743,9 @@ export class GenerationService {
     durationMinutes: number,
     difficulty: string,
     session: string,
+    options?: GroundedPlanOptions,
   ): { prompt: string; systemPrompt: string; stage: CurriculumStage } {
-    return buildGroundedPlanPrompt(c as NormalizedCurriculum, durationMinutes, difficulty, session);
+    return buildGroundedPlanPrompt(c as NormalizedCurriculum, durationMinutes, difficulty, session, options);
   }
 
   private buildNotePrompt(

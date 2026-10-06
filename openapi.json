@@ -1620,6 +1620,18 @@
           "resourceId": {
             "type": "string",
             "description": "Optional uploaded resource ID for RAG grounding"
+          },
+          "learningAids": {
+            "description": "Teacher selected classroom learning aids / instructional materials",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pedagogicalEmphasis": {
+            "type": "string",
+            "description": "Pedagogical emphasis / tone: standard, hands_on, exam_focus, remedial",
+            "example": "hands_on"
           }
         },
         "required": [

@@ -134,5 +134,30 @@ describe('StageGroundingPromptEngine', () => {
       expect(result.prompt).toContain('Teacher brings potted seedlings to class');
       expect(result.systemPrompt).toContain('Primary Education specialist');
     });
+
+    it('should inject teacher-selected learning aids and pedagogical emphasis when provided', () => {
+      const curriculum: NormalizedCurriculum = {
+        source: 'release',
+        id: 'unit-456',
+        state: 'Federal',
+        subject: 'Mathematics',
+        classLevel: 'SSS 2',
+        term: 1,
+        week: 4,
+        topic: 'Quadratic Equations',
+        subTopics: ['Factorization method', 'Completing the square'],
+        objectives: ['Solve quadratic equations by factorization'],
+      };
+
+      const result = buildGroundedPlanPrompt(curriculum, 40, 'standard', '2026/2027', {
+        learningAids: ['Graph board', 'Quadratic flashcards'],
+        pedagogicalEmphasis: 'exam_focus',
+      });
+
+      expect(result.stage).toBe(CurriculumStage.senior_secondary);
+      expect(result.prompt).toContain('Teacher Selected Aids    : Graph board, Quadratic flashcards');
+      expect(result.prompt).toContain('Instructional Materials Priority: The teacher specifically selected: [Graph board, Quadratic flashcards]');
+      expect(result.prompt).toContain('National Examination Focus (WAEC / BECE / NECO)');
+    });
   });
 });

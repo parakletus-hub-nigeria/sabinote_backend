@@ -214,6 +214,11 @@ export function calculatePacing(totalMinutes: number) {
   };
 }
 
+export interface GroundedPlanOptions {
+  learningAids?: string[];
+  pedagogicalEmphasis?: string;
+}
+
 /**
  * Builds an authentic, stage-grounded lesson plan prompt.
  */
@@ -222,6 +227,7 @@ export function buildGroundedPlanPrompt(
   durationMinutes: number,
   difficulty: string,
   session: string,
+  options?: GroundedPlanOptions,
 ): { prompt: string; systemPrompt: string; stage: CurriculumStage } {
   const stage = detectCurriculumStage(c.classLevel);
   const pedagogy = getStagePedagogy(stage);
@@ -247,6 +253,12 @@ export function buildGroundedPlanPrompt(
   if (c.teachingAids) {
     canonicalContextLines.push(`Suggested Teaching Aids  : ${c.teachingAids}`);
   }
+  if (options?.learningAids && options.learningAids.length > 0) {
+    canonicalContextLines.push(`Teacher Selected Aids    : ${options.learningAids.join(', ')}`);
+  }
+  if (options?.pedagogicalEmphasis) {
+    canonicalContextLines.push(`Pedagogical Emphasis     : ${options.pedagogicalEmphasis}`);
+  }
   if (c.competencies && c.competencies.length > 0) {
     canonicalContextLines.push(`National Core Competency : ${c.competencies.join(', ')}`);
   }
@@ -256,6 +268,19 @@ export function buildGroundedPlanPrompt(
   if (c.releaseId) {
     canonicalContextLines.push(`Scheme Provenance        : Release [${c.releaseId}] Unit [${c.unitId ?? c.id}]`);
   }
+
+  let emphasisGuidance = '• Pedagogical Focus: Standard Comprehensive. Ensure a balanced equilibrium of conceptual rigor, interactive demonstration, and formal evaluation.';
+  if (options?.pedagogicalEmphasis === 'hands_on') {
+    emphasisGuidance = '• Pedagogical Focus: Hands-On & Experiential Learning. Maximize active manipulation of physical materials, student-led experiments, tactile activities, and lively peer discussions over passive lecturing.';
+  } else if (options?.pedagogicalEmphasis === 'exam_focus') {
+    emphasisGuidance = '• Pedagogical Focus: National Examination Focus (WAEC / BECE / NECO). Emphasize standardized examination terminology, typical test questions, marking scheme expectations, and common pitfalls.';
+  } else if (options?.pedagogicalEmphasis === 'remedial') {
+    emphasisGuidance = '• Pedagogical Focus: Remedial Support & Concept Scaffolding. Provide granular step-by-step guidance, multiple worked examples, simplified vocabulary, and reassuring checks for understanding to boost learner confidence.';
+  }
+
+  const materialsInstruction = options?.learningAids && options.learningAids.length > 0
+    ? `• Instructional Materials Priority: The teacher specifically selected: [${options.learningAids.join(', ')}]. You MUST feature these prominently in "instructionalMaterials" and integrate their usage directly into presentation Step 2 or Step 3.`
+    : `• Instructional Materials: ${pedagogy.materialsGuidance}`;
 
   const prompt = `You are a ${pedagogy.specialistRole}.
 
@@ -271,11 +296,12 @@ Reference Text           : ${refBook}
 STAGE-SPECIFIC PEDAGOGICAL REQUIREMENTS (${pedagogy.stageName})
 ═══════════════════════════════════════════════════════════════════
 • Developmental Focus: ${pedagogy.developmentalFocus}
+${emphasisGuidance}
 • Bloom's Cognitive Verbs: Use verbs appropriate for this level: ${pedagogy.cognitiveVerbs.join(', ')}.
   Start each with "By the end of this lesson, students will be able to..."
 • Bloom's Affective Verbs: ${pedagogy.affectiveVerbs.join(', ')}
 • Bloom's Psychomotor Verbs: ${pedagogy.psychomotorVerbs.join(', ')}
-• Instructional Materials: ${pedagogy.materialsGuidance}
+${materialsInstruction}
 • Pacing Guidance (Total ${pacing.totalMinutes} min):
   - Step 1 (${pacing.step1Duration}): "${pedagogy.step1Title}" — ${pedagogy.step1Description}
   - Step 2 (${pacing.step2Duration}): "${pedagogy.step2Title}" — ${pedagogy.step2Description}
