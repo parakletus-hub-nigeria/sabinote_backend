@@ -1,0 +1,14 @@
+# Dependencies are installed inside the image by `npm ci` — never copy host
+# node_modules (native modules like bcrypt are built for the host OS).
+node_modules
+dist
+coverage
+
+# Secrets come from the container's environment, not the image.
+.env
+.env.*
+
+.git
+.github
+.vscode
+*.log
