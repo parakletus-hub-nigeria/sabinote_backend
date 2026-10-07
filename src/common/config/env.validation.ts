@@ -13,7 +13,15 @@ export const envSchema = z
     JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
 
     OPENROUTER_API_KEY: z.string().min(1, 'OPENROUTER_API_KEY is required'),
-    OPENROUTER_MODEL: z.string().default('google/gemini-flash-1.5'),
+    OPENROUTER_MODEL: z
+      .string()
+      .default('google/gemini-2.5-flash')
+      .transform((m) => {
+        if (m === 'google/gemini-flash-1.5' || m === 'google/gemini-1.5-flash') {
+          return 'google/gemini-2.5-flash';
+        }
+        return m;
+      }),
     PLAN_COST_PARATS: z.coerce.number().default(8),
     NOTE_COST_PARATS: z.coerce.number().default(12),
     REGENERATE_COST_PARATS: z.coerce.number().default(5),

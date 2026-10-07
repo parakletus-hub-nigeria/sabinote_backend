@@ -65,7 +65,11 @@ export class GenerationService {
     this.planCost = +config.get('PLAN_COST_PARATS', '8');
     this.noteCost = +config.get('NOTE_COST_PARATS', '12');
     this.regenCost = +config.get('REGENERATE_COST_PARATS', '5');
-    this.model = config.get('OPENROUTER_MODEL', 'google/gemini-flash-1.5');
+    const configuredModel = config.get('OPENROUTER_MODEL', 'google/gemini-2.5-flash');
+    this.model =
+      configuredModel === 'google/gemini-flash-1.5' || configuredModel === 'google/gemini-1.5-flash'
+        ? 'google/gemini-2.5-flash'
+        : configuredModel;
     this.planMaxTokens = +config.get('PLAN_MAX_TOKENS', '3000');
     this.noteMaxTokens = +config.get('NOTE_MAX_TOKENS', '5000');
     
@@ -587,9 +591,19 @@ export class GenerationService {
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
-  private async ensureBalance(userId: string, cost: number) {
-    const wallet = await this.prisma.wallet.findUnique({ where: { userId } });
-    if (!wallet) throw new NotFoundException('Wallet not found');
+  private async ensureBalance(userId: string, cost: number): Promise<Wallet> {
+    let wallet = await this.prisma.wallet.findUnique({ where: { userId } });
+    if (!wallet) {
+      const user = await this.prisma.user.findUnique({ where: { userId } });
+      if (!user) throw new NotFoundException('User not found');
+      wallet = await this.prisma.wallet.create({
+        data: {
+          userId,
+          balance: 24.0,
+        },
+      });
+      this.logger.log(`Auto-provisioned initial wallet (24 Parats) for user ${userId}`);
+    }
     if (Number(wallet.balance) < cost) {
       throw new HttpException(
         `Insufficient Parats. You need ${cost} Parats but have ${wallet.balance}.`,
@@ -620,14 +634,16 @@ export class GenerationService {
     maxTokens = this.noteMaxTokens,
     systemPromptOverride?: string,
     _retryCount = 0,
+    modelOverride?: string,
   ) {
     const SYSTEM = `${systemPromptOverride || 'You are an expert Nigerian secondary school curriculum specialist trained on NERDC standards.'}\n\nYou ONLY respond with valid JSON that matches the exact schema provided. No explanations, no markdown code fences, no preamble.`;
+    const targetModel = modelOverride || this.model;
 
     try {
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
         {
-          model: this.model,
+          model: targetModel,
           max_tokens: maxTokens,
           messages: [
             { role: 'system', content: SYSTEM },
@@ -655,10 +671,20 @@ export class GenerationService {
 
       return { data: validated as T, tokensUsed, status: ResponseStatus.success };
     } catch (err: any) {
+      const errStatus = err?.response?.status;
+      const errMsg = err?.response?.data?.error?.message || err?.message || '';
+
+      // If model not found or deprecated (404/400), try reliable fallback model
+      if ((errStatus === 404 || (errStatus === 400 && errMsg.toLowerCase().includes('model'))) && _retryCount < 2) {
+        const fallback = targetModel === 'google/gemini-2.5-flash' ? 'google/gemini-2.5-flash-lite' : 'google/gemini-2.5-flash';
+        this.logger.warn(`Model ${targetModel} unavailable (${errMsg}), falling back to ${fallback}`);
+        return this.callOpenRouter(prompt, schema, maxTokens, systemPromptOverride, _retryCount + 1, fallback);
+      }
+
       // Reduce tokens on 402 (insufficient model credits), max 3 reductions
-      if (err?.response?.status === 402 && maxTokens > 2000 && _retryCount < 3) {
+      if (errStatus === 402 && maxTokens > 2000 && _retryCount < 3) {
         this.logger.warn(`Insufficient credits, retrying with reduced max_tokens: ${maxTokens - 1000}`);
-        return this.callOpenRouter(prompt, schema, maxTokens - 1000, systemPromptOverride, _retryCount + 1);
+        return this.callOpenRouter(prompt, schema, maxTokens - 1000, systemPromptOverride, _retryCount + 1, targetModel);
       }
 
       // Retry on transient network/server errors (5xx, timeout, connection reset)
@@ -666,16 +692,16 @@ export class GenerationService {
         err?.code === 'ECONNABORTED' ||
         err?.code === 'ETIMEDOUT' ||
         err?.code === 'ECONNRESET' ||
-        (err?.response?.status >= 500 && err?.response?.status !== 402);
+        (errStatus >= 500 && errStatus !== 402);
       if (isTransient && _retryCount < 2) {
         const delay = (_retryCount + 1) * 1500;
-        this.logger.warn(`Transient error (${err?.code ?? err?.response?.status}), retrying in ${delay}ms`);
+        this.logger.warn(`Transient error (${err?.code ?? errStatus}), retrying in ${delay}ms`);
         await new Promise((resolve) => setTimeout(resolve, delay));
-        return this.callOpenRouter(prompt, schema, maxTokens, systemPromptOverride, _retryCount + 1);
+        return this.callOpenRouter(prompt, schema, maxTokens, systemPromptOverride, _retryCount + 1, targetModel);
       }
 
       const detail = err?.response?.data ?? err?.message ?? err;
-      this.logger.error('OpenRouter call failed', JSON.stringify(detail));
+      this.logger.error(`OpenRouter call failed [model: ${targetModel}]`, JSON.stringify(detail));
       return { data: null, tokensUsed: 0, status: ResponseStatus.failed };
     }
   }
