@@ -136,9 +136,12 @@ export class GenerationService {
         pedagogicalEmphasis: dto.pedagogicalEmphasis,
       },
     );
-    const { data: plan, tokensUsed, status } = await this.callOpenRouter(prompt, LessonPlanSchema, this.planMaxTokens, systemPrompt);
+    const { data: plan, tokensUsed, status, error: planError } = await this.callOpenRouter(prompt, LessonPlanSchema, this.planMaxTokens, systemPrompt);
 
-    if (!plan) throw new ServiceUnavailableException('AI generation failed. Your Parats were not deducted.');
+    if (!plan) {
+      const reason = planError ? (typeof planError === 'object' ? JSON.stringify(planError) : String(planError)) : 'Upstream provider failure';
+      throw new ServiceUnavailableException(`AI generation failed: ${reason}. Your Parats were not deducted.`);
+    }
 
     const canonicalObjectives = curriculum.objectives ?? [];
     const planCognitive = plan.objectives?.cognitive ?? [];
@@ -665,11 +668,23 @@ export class GenerationService {
       const usage = response.data.usage;
       const tokensUsed = (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0);
 
-      const cleaned = this.cleanRawJson(raw);
-      const parsed = JSON.parse(cleaned);
-      const validated = schema.parse(parsed);
+      let validated: T;
+      try {
+        const cleaned = this.cleanRawJson(raw);
+        const parsed = JSON.parse(cleaned);
+        validated = schema.parse(parsed) as T;
+      } catch (parseErr: any) {
+        const parseMsg = parseErr?.errors?.[0]?.message || parseErr?.message || 'Invalid JSON/schema structure';
+        this.logger.error(`AI output parsing failed: ${parseMsg}`, raw.slice(0, 500));
+        return {
+          data: null,
+          tokensUsed,
+          status: ResponseStatus.failed,
+          error: `Output structure mismatch: ${parseMsg}`,
+        };
+      }
 
-      return { data: validated as T, tokensUsed, status: ResponseStatus.success };
+      return { data: validated, tokensUsed, status: ResponseStatus.success };
     } catch (err: any) {
       const errStatus = err?.response?.status;
       const errMsg = err?.response?.data?.error?.message || err?.message || '';
@@ -702,7 +717,8 @@ export class GenerationService {
 
       const detail = err?.response?.data ?? err?.message ?? err;
       this.logger.error(`OpenRouter call failed [model: ${targetModel}]`, JSON.stringify(detail));
-      return { data: null, tokensUsed: 0, status: ResponseStatus.failed };
+      const failReason = err?.response?.data?.error?.message || err?.message || 'OpenRouter service unavailable';
+      return { data: null, tokensUsed: 0, status: ResponseStatus.failed, error: failReason };
     }
   }
 
