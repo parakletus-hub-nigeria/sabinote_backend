@@ -718,17 +718,17 @@ export class GenerationService {
       const errStatus = err?.response?.status;
       const errMsg = err?.response?.data?.error?.message || err?.message || '';
 
-      // If model not found or unsupported (404/400), try reliable fallback model
-      if ((errStatus === 404 || errStatus === 400) && _retryCount < 2) {
-        const fallback = targetModel === 'google/gemini-2.5-flash' ? 'google/gemini-2.5-flash-lite' : 'google/gemini-2.5-flash';
-        this.logger.warn(`Model ${targetModel} unavailable or rejected response_format (${errMsg}), falling back to ${fallback}`);
-        return this.callOpenRouter(prompt, schema, maxTokens, systemPromptOverride, _retryCount + 1, fallback);
+      // Fallback on 402 (insufficient OpenRouter credits) to openrouter/free
+      if (errStatus === 402 && targetModel !== 'openrouter/free' && _retryCount < 3) {
+        this.logger.warn(`Insufficient OpenRouter credits on ${targetModel} (${errMsg}), seamlessly falling back to openrouter/free`);
+        return this.callOpenRouter(prompt, schema, maxTokens, systemPromptOverride, _retryCount + 1, 'openrouter/free');
       }
 
-      // Reduce tokens on 402 (insufficient model credits), max 3 reductions
-      if (errStatus === 402 && maxTokens > 2000 && _retryCount < 3) {
-        this.logger.warn(`Insufficient credits, retrying with reduced max_tokens: ${maxTokens - 1000}`);
-        return this.callOpenRouter(prompt, schema, maxTokens - 1000, systemPromptOverride, _retryCount + 1, targetModel);
+      // If model not found or unsupported (404/400), try reliable fallback model
+      if ((errStatus === 404 || errStatus === 400) && _retryCount < 2) {
+        const fallback = targetModel === 'google/gemini-2.5-flash' ? 'google/gemini-2.5-flash-lite' : 'openrouter/free';
+        this.logger.warn(`Model ${targetModel} unavailable or rejected response_format (${errMsg}), falling back to ${fallback}`);
+        return this.callOpenRouter(prompt, schema, maxTokens, systemPromptOverride, _retryCount + 1, fallback);
       }
 
       // Retry on transient network/server errors (5xx, timeout, connection reset)
@@ -762,73 +762,83 @@ export class GenerationService {
     maxTokens: number,
     systemPromptOverride: string,
     onDelta: (delta: string) => void,
+    modelOverride?: string,
   ): Promise<{ text: string; tokensUsed: number }> {
     const SYSTEM = `${systemPromptOverride}\n\nYou ONLY respond with valid JSON that matches the exact schema provided. No explanations, no markdown code fences, no preamble.`;
+    const targetModel = modelOverride || this.model;
 
-    const response = await axios.post(
-      `${this.baseUrl}/chat/completions`,
-      {
-        model: this.model,
-        max_tokens: maxTokens,
-        stream: true,
-        stream_options: { include_usage: true },
-        messages: [
-          { role: 'system', content: SYSTEM },
-          { role: 'user', content: prompt },
-        ],
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://sabinote.app',
-          'X-Title': 'SabiNote',
+    try {
+      const response = await axios.post(
+        `${this.baseUrl}/chat/completions`,
+        {
+          model: targetModel,
+          max_tokens: maxTokens,
+          response_format: { type: 'json_object' },
+          stream: true,
+          stream_options: { include_usage: true },
+          messages: [
+            { role: 'system', content: SYSTEM },
+            { role: 'user', content: prompt },
+          ],
         },
-        responseType: 'stream',
-        timeout: 120_000,
-      },
-    );
+        {
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://sabinote.app',
+            'X-Title': 'SabiNote',
+          },
+          responseType: 'stream',
+          timeout: 120_000,
+        },
+      );
 
-    return new Promise((resolve, reject) => {
-      let full = '';
-      let buffer = '';
-      let tokensUsed = 0;
+      return new Promise((resolve, reject) => {
+        let full = '';
+        let buffer = '';
+        let tokensUsed = 0;
 
-      const stream = response.data as NodeJS.ReadableStream;
+        const stream = response.data as NodeJS.ReadableStream;
 
-      stream.on('data', (chunk: Buffer) => {
-        buffer += chunk.toString('utf8');
-        // SSE frames are separated by newlines; keep the last (possibly partial) line buffered.
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data:')) continue; // skip `:` keepalive comments
-          const payload = trimmed.slice(5).trim();
-          if (payload === '[DONE]') continue;
-          try {
-            const json = JSON.parse(payload);
-            if (json.error) {
-              reject(new Error(json.error?.message ?? 'OpenRouter stream error'));
-              return;
+        stream.on('data', (chunk: Buffer) => {
+          buffer += chunk.toString('utf8');
+          // SSE frames are separated by newlines; keep the last (possibly partial) line buffered.
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === ': ping') continue;
+            if (trimmed === 'data: [DONE]') continue;
+            if (!trimmed.startsWith('data: ')) continue;
+            try {
+              const parsed = JSON.parse(trimmed.slice(6));
+              const delta = parsed.choices?.[0]?.delta?.content ?? '';
+              if (parsed.usage) {
+                tokensUsed =
+                  (parsed.usage.prompt_tokens ?? 0) +
+                  (parsed.usage.completion_tokens ?? 0);
+              }
+              if (delta) {
+                full += delta;
+                onDelta(delta);
+              }
+            } catch {
+              // Partial JSON spanning chunk boundaries — ignore; it'll complete next chunk.
             }
-            if (json.usage) {
-              tokensUsed = (json.usage.prompt_tokens ?? 0) + (json.usage.completion_tokens ?? 0);
-            }
-            const delta: string | undefined = json.choices?.[0]?.delta?.content;
-            if (delta) {
-              full += delta;
-              onDelta(delta);
-            }
-          } catch {
-            // Partial JSON spanning chunk boundaries — ignore; it'll complete next chunk.
           }
-        }
-      });
+        });
 
-      stream.on('end', () => resolve({ text: full, tokensUsed }));
-      stream.on('error', reject);
-    });
+        stream.on('end', () => resolve({ text: full, tokensUsed }));
+        stream.on('error', reject);
+      });
+    } catch (err: any) {
+      const errStatus = err?.response?.status;
+      if (errStatus === 402 && targetModel !== 'openrouter/free') {
+        this.logger.warn(`OpenRouter credits depleted during stream (${targetModel}). Retrying stream with openrouter/free...`);
+        return this.streamOpenRouter(prompt, maxTokens, systemPromptOverride, onDelta, 'openrouter/free');
+      }
+      throw err;
+    }
   }
 
   // ─── Prompt Builders ─────────────────────────────────────────────────────
