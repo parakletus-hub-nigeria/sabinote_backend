@@ -9,7 +9,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   constructor(configService: ConfigService) {
     const pool = new Pool({
       connectionString: configService.getOrThrow<string>('DATABASE_URL'),
-      max: 5,
+      max: 15,
       idleTimeoutMillis: 60_000,       // close idle connections after 60s
       connectionTimeoutMillis: 10_000, // fail fast if can't connect in 10s
     });

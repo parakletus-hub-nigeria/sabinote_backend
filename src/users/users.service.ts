@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CacheService } from '../cache/cache.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 
@@ -17,7 +18,17 @@ const USER_SELECT = {
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cache: CacheService,
+  ) {}
+
+  private async invalidateUserCache(userId: string) {
+    await Promise.all([
+      this.cache.del(`auth:user:${userId}`),
+      this.cache.del(`user:settings:${userId}`),
+    ]);
+  }
 
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { userId }, select: USER_SELECT });
@@ -26,11 +37,13 @@ export class UsersService {
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
-    return this.prisma.user.update({
+    const user = await this.prisma.user.update({
       where: { userId },
       data: dto,
       select: USER_SELECT,
     });
+    await this.invalidateUserCache(userId);
+    return user;
   }
 
   async getSettings(userId: string) {
@@ -40,10 +53,13 @@ export class UsersService {
   }
 
   async updateSettings(userId: string, dto: UpdateSettingsDto) {
-    return this.prisma.userSettings.update({ where: { userId }, data: dto });
+    const settings = await this.prisma.userSettings.update({ where: { userId }, data: dto });
+    await this.invalidateUserCache(userId);
+    return settings;
   }
 
   async deleteAccount(userId: string) {
     await this.prisma.user.delete({ where: { userId } });
+    await this.invalidateUserCache(userId);
   }
 }

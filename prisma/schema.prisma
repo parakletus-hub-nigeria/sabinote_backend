@@ -163,6 +163,9 @@ model Transaction {
   wallet      Wallet       @relation(fields: [walletId], references: [walletId])
   user        User         @relation(fields: [userId], references: [userId])
   lessonNotes LessonNote[]
+
+  @@index([userId, createdAt(sort: Desc)], name: "idx_transaction_user")
+  @@index([paystackReference], name: "idx_transaction_paystack_ref")
 }
 
 model CurriculumWeek {

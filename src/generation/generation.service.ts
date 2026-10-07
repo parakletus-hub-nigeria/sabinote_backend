@@ -52,6 +52,7 @@ export class GenerationService {
   private readonly model: string;
   private readonly planMaxTokens: number;
   private readonly noteMaxTokens: number;
+  private readonly reasoningEffort: string;
   private readonly baseUrl = 'https://openrouter.ai/api/v1';
   private readonly lessonNoteSystemPrompt: string;
 
@@ -72,6 +73,8 @@ export class GenerationService {
         : configuredModel;
     this.planMaxTokens = +config.get('PLAN_MAX_TOKENS', '3000');
     this.noteMaxTokens = +config.get('NOTE_MAX_TOKENS', '5000');
+    // Only affects reasoning models; OpenRouter ignores it for others. 'none' disables the param.
+    this.reasoningEffort = config.get('OPENROUTER_REASONING_EFFORT', 'low');
     
     try {
       // Resolve spec file with multiple candidates so it works locally (cwd = project root)
@@ -651,6 +654,18 @@ export class GenerationService {
     return cleaned;
   }
 
+  /** Request fields shared by the blocking and streaming OpenRouter calls. */
+  private openRouterOptions(model: string) {
+    return {
+      model,
+      // Force a JSON object so responses parse instead of failing after a full generation.
+      response_format: { type: 'json_object' },
+      // Prefer the fastest host serving this model.
+      provider: { sort: 'throughput' },
+      ...(this.reasoningEffort !== 'none' ? { reasoning: { effort: this.reasoningEffort } } : {}),
+    };
+  }
+
   private async callOpenRouter<T>(
     prompt: string,
     schema: z.ZodSchema<T> | z.ZodTypeAny,
@@ -666,9 +681,8 @@ export class GenerationService {
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
         {
-          model: targetModel,
+          ...this.openRouterOptions(targetModel),
           max_tokens: maxTokens,
-          response_format: { type: 'json_object' },
           messages: [
             { role: 'system', content: SYSTEM },
             { role: 'user', content: prompt },
@@ -731,10 +745,10 @@ export class GenerationService {
         return this.callOpenRouter(prompt, schema, maxTokens, systemPromptOverride, _retryCount + 1, fallback);
       }
 
-      // Retry on transient network/server errors (5xx, timeout, connection reset)
+      // Retry on fast transient failures (5xx, connection reset). Timeouts are NOT
+      // retried: each attempt already waited the full timeout, so retrying only turns a
+      // slow failure into a multi-minute one.
       const isTransient =
-        err?.code === 'ECONNABORTED' ||
-        err?.code === 'ETIMEDOUT' ||
         err?.code === 'ECONNRESET' ||
         (errStatus >= 500 && errStatus !== 402);
       if (isTransient && _retryCount < 2) {
@@ -771,9 +785,8 @@ export class GenerationService {
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
         {
-          model: targetModel,
+          ...this.openRouterOptions(targetModel),
           max_tokens: maxTokens,
-          response_format: { type: 'json_object' },
           stream: true,
           stream_options: { include_usage: true },
           messages: [
