@@ -199,7 +199,7 @@ export class AuthService {
         state: dto.state,
         role: Role.teacher,
         wallet: {
-          create: { balance: 0 },
+          create: { balance: 24.0 },
         },
         settings: {
           create: {

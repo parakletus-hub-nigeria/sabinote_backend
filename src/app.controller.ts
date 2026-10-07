@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { AppService } from './app.service';
 import { PLATFORM_RELEASE_MANIFEST } from './common/config/release.manifest';
 
@@ -52,11 +52,16 @@ export class AppController {
   }
 
   @Get('system/ai-health')
-  async getAiHealth() {
+  async getAiHealth(
+    @Query('model') modelOverride?: string,
+    @Query('testPlan') testPlan?: string,
+  ) {
     const apiKey = process.env.OPENROUTER_API_KEY || '';
     const keyConfigured = !!apiKey;
-    const keyPrefix = apiKey ? `${apiKey.substring(0, 10)}...${apiKey.substring(Math.max(0, apiKey.length - 4))}` : 'NOT_SET';
-    const model = process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash';
+    const keyPrefix = apiKey
+      ? `${apiKey.substring(0, 10)}...${apiKey.substring(Math.max(0, apiKey.length - 4))}`
+      : 'NOT_SET';
+    const model = modelOverride || process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash';
 
     if (!keyConfigured || apiKey.startsWith('dev_')) {
       return {
@@ -70,6 +75,63 @@ export class AppController {
     try {
       const axiosModule = await import('axios');
       const axios = axiosModule.default;
+
+      if (testPlan === 'true') {
+        const testPrompt = `You are a master Nigerian Junior Secondary educator.
+Generate a complete, inspection-ready LESSON PLAN for JSS 1 Business Studies on "Overview of Business".
+Return ONLY valid JSON with keys: metadata, referenceBooks, instructionalMaterials, entryBehaviour, previousKnowledge, objectives, presentation, commonMisconceptions, differentiation, evaluation, summary, assignment.`;
+
+        const start = Date.now();
+        const response = await axios.post(
+          'https://openrouter.ai/api/v1/chat/completions',
+          {
+            model,
+            max_tokens: 3000,
+            response_format: { type: 'json_object' },
+            messages: [
+              {
+                role: 'system',
+                content:
+                  'You are an expert Nigerian curriculum specialist. You ONLY respond with valid JSON. No markdown code fences, no preamble.',
+              },
+              { role: 'user', content: testPrompt },
+            ],
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+              'HTTP-Referer': 'https://sabinote.app',
+              'X-Title': 'SabiNote Health Check',
+            },
+            timeout: 75_000,
+          },
+        );
+
+        const durationMs = Date.now() - start;
+        const raw: string = response.data?.choices?.[0]?.message?.content ?? '';
+        let isJson = false;
+        let parsedKeys: string[] = [];
+        try {
+          const parsed = JSON.parse(raw);
+          isJson = true;
+          parsedKeys = Object.keys(parsed);
+        } catch {}
+
+        return {
+          success: true,
+          keyPrefix,
+          model,
+          status: response.status,
+          durationMs,
+          rawLength: raw.length,
+          isJson,
+          parsedKeys,
+          rawPreview: raw.slice(0, 300),
+          usage: response.data?.usage,
+        };
+      }
+
       const response = await axios.post(
         'https://openrouter.ai/api/v1/chat/completions',
         {

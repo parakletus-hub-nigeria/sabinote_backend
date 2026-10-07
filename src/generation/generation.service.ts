@@ -606,6 +606,17 @@ export class GenerationService {
         },
       });
       this.logger.log(`Auto-provisioned initial wallet (24 Parats) for user ${userId}`);
+    } else if (Number(wallet.balance) < cost) {
+      // Check if user has zero transactions. If so, they are a newly registered teacher with 0 balance
+      // Give them 24 starter Parats so they can generate their first lessons right away.
+      const txCount = await this.prisma.transaction.count({ where: { userId } });
+      if (txCount === 0) {
+        wallet = await this.prisma.wallet.update({
+          where: { walletId: wallet.walletId },
+          data: { balance: 24.0 },
+        });
+        this.logger.log(`Granted starter welcome balance (24 Parats) to new user ${userId}`);
+      }
     }
     if (Number(wallet.balance) < cost) {
       throw new HttpException(
@@ -616,9 +627,14 @@ export class GenerationService {
     return wallet;
   }
 
-  /** Strips markdown code fences and trims to the outermost JSON object/array. */
+  /** Strips markdown code fences, reasoning tags, and trims to the outermost JSON object/array. */
   private cleanRawJson(raw: string): string {
-    let cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```[\s\S]*$/i, '').trim();
+    let cleaned = raw
+      .replace(/<think[\s\S]*?<\/think>/gi, '')
+      .replace(/<thought[\s\S]*?<\/thought>/gi, '')
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```[\s\S]*$/i, '')
+      .trim();
     const start = cleaned.search(/[\{\[]/);
     if (start === -1) return cleaned;
 
@@ -628,6 +644,10 @@ export class GenerationService {
     const close = open === '{' ? '}' : ']';
     const end = cleaned.lastIndexOf(close);
     if (end > start) cleaned = cleaned.substring(start, end + 1);
+
+    // Remove any trailing commas before closing braces/brackets which invalidate JSON.parse
+    cleaned = cleaned.replace(/,\s*([\}\]])/g, '$1');
+
     return cleaned;
   }
 
@@ -648,6 +668,7 @@ export class GenerationService {
         {
           model: targetModel,
           max_tokens: maxTokens,
+          response_format: { type: 'json_object' },
           messages: [
             { role: 'system', content: SYSTEM },
             { role: 'user', content: prompt },
@@ -660,7 +681,7 @@ export class GenerationService {
             'HTTP-Referer': 'https://sabinote.app',
             'X-Title': 'SabiNote',
           },
-          timeout: 60_000,
+          timeout: 75_000,
         },
       );
 
@@ -675,7 +696,15 @@ export class GenerationService {
         validated = schema.parse(parsed) as T;
       } catch (parseErr: any) {
         const parseMsg = parseErr?.errors?.[0]?.message || parseErr?.message || 'Invalid JSON/schema structure';
-        this.logger.error(`AI output parsing failed: ${parseMsg}`, raw.slice(0, 500));
+        this.logger.error(`AI output parsing failed [model: ${targetModel}]: ${parseMsg}`, raw.slice(0, 500));
+
+        // If structured output parsing failed, retry with reliable fallback model
+        if (_retryCount < 2) {
+          const fallback = targetModel === 'google/gemini-2.5-flash' ? 'google/gemini-2.5-flash-lite' : 'google/gemini-2.5-flash';
+          this.logger.warn(`Retrying generation with fallback model ${fallback} due to schema parsing failure on ${targetModel}`);
+          return this.callOpenRouter(prompt, schema, maxTokens, systemPromptOverride, _retryCount + 1, fallback);
+        }
+
         return {
           data: null,
           tokensUsed,
@@ -689,10 +718,10 @@ export class GenerationService {
       const errStatus = err?.response?.status;
       const errMsg = err?.response?.data?.error?.message || err?.message || '';
 
-      // If model not found or deprecated (404/400), try reliable fallback model
-      if ((errStatus === 404 || (errStatus === 400 && errMsg.toLowerCase().includes('model'))) && _retryCount < 2) {
+      // If model not found or unsupported (404/400), try reliable fallback model
+      if ((errStatus === 404 || errStatus === 400) && _retryCount < 2) {
         const fallback = targetModel === 'google/gemini-2.5-flash' ? 'google/gemini-2.5-flash-lite' : 'google/gemini-2.5-flash';
-        this.logger.warn(`Model ${targetModel} unavailable (${errMsg}), falling back to ${fallback}`);
+        this.logger.warn(`Model ${targetModel} unavailable or rejected response_format (${errMsg}), falling back to ${fallback}`);
         return this.callOpenRouter(prompt, schema, maxTokens, systemPromptOverride, _retryCount + 1, fallback);
       }
 
