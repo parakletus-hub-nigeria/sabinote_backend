@@ -1,23 +1,13 @@
-import { BadRequestException, Body, Controller, Get, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ResourceType } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SeedCurriculumDto } from '../curriculum/dto/seed-curriculum.dto';
 import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
 import { CreditWalletDto } from './dto/credit-wallet.dto';
-
-const PDF_UPLOAD_OPTIONS = {
-  limits: { fileSize: 30 * 1024 * 1024 },
-  fileFilter: (_req: any, file: Express.Multer.File, cb: Function) => {
-    if (file.mimetype === 'application/pdf') {
-      cb(null, true);
-    } else {
-      cb(new BadRequestException('Only PDF files are accepted'), false);
-    }
-  },
-};
+import { UploadResourceDto } from '../resources/dto/upload-resource.dto';
+import { PDF_UPLOAD_OPTIONS } from '../resources/resources.controller';
 
 @UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('admin')
@@ -54,15 +44,9 @@ export class AdminController {
   async uploadResource(
     @CurrentUser() user: { userId: string },
     @UploadedFile() file: Express.Multer.File,
-    @Body('resourceName') resourceName: string,
-    @Body('resourceType') resourceType: ResourceType,
-    @Body('subject') subject?: string,
-    @Body('classLevel') classLevel?: string,
-    @Body('state') state?: string,
+    @Body() dto: UploadResourceDto,
   ) {
-    const data = await this.adminService.uploadPublicResource(user.userId, file, {
-      resourceName, resourceType, subject, classLevel, state,
-    });
+    const data = await this.adminService.uploadPublicResource(user.userId, file, dto);
     return { success: true, data };
   }
 }

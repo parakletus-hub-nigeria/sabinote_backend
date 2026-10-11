@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -10,6 +11,7 @@ import { Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
@@ -175,6 +177,77 @@ export class AuthService {
     }
   }
 
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+    meta?: { userAgent?: string; ipAddress?: string },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { userId },
+      select: { userId: true, email: true, role: true, passwordHash: true },
+    });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    if (user.passwordHash) {
+      if (!dto.currentPassword) {
+        throw new BadRequestException('Current password is required');
+      }
+      const ok = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+      if (!ok) throw new BadRequestException('Current password is incorrect');
+      if (dto.currentPassword === dto.newPassword) {
+        throw new BadRequestException('New password must be different from the current one');
+      }
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    await this.prisma.user.update({ where: { userId }, data: { passwordHash } });
+
+    // A password change signs every device out; this device gets a fresh session below.
+    await this.prisma.refreshSession.updateMany({
+      where: { userId, isRevoked: false },
+      data: { isRevoked: true, revokedAt: new Date(), revokedReason: 'password_changed' },
+    });
+
+    const tokens = this.generateTokens(user.userId, user.email, user.role);
+    await this.createSession(user.userId, tokens.refreshToken, meta);
+    return tokens;
+  }
+
+  async listSessions(userId: string, currentRefreshToken?: string) {
+    const currentHash = currentRefreshToken ? this.hashToken(currentRefreshToken) : null;
+    const sessions = await this.prisma.refreshSession.findMany({
+      where: { userId, isRevoked: false, expiresAt: { gt: new Date() } },
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        sessionId: true,
+        tokenHash: true,
+        userAgent: true,
+        ipAddress: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    return sessions.map(({ tokenHash, ...rest }) => ({
+      ...rest,
+      isCurrent: currentHash !== null && tokenHash === currentHash,
+    }));
+  }
+
+  async revokeSession(userId: string, sessionId: string) {
+    const result = await this.prisma.refreshSession.updateMany({
+      where: { sessionId, userId, isRevoked: false },
+      data: { isRevoked: true, revokedAt: new Date(), revokedReason: 'user_revoked' },
+    });
+    if (result.count === 0) throw new NotFoundException('Session not found');
+  }
+
+  async logoutOthers(userId: string, currentRefreshToken: string) {
+    await this.prisma.refreshSession.updateMany({
+      where: { userId, isRevoked: false, tokenHash: { not: this.hashToken(currentRefreshToken) } },
+      data: { isRevoked: true, revokedAt: new Date(), revokedReason: 'user_logout_others' },
+    });
+  }
+
   async register(
     dto: RegisterDto,
     meta?: { userAgent?: string; ipAddress?: string },
@@ -317,6 +390,8 @@ export class AuthService {
             defaultClassLevel: true,
             emailNotifications: true,
             alwaysConfirmState: true,
+            notifyGenerationComplete: true,
+            notifyWalletTopup: true,
           },
         },
       },

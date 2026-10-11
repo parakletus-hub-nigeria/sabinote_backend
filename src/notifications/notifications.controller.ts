@@ -16,6 +16,11 @@ export class NotificationsController {
     return { success: true, data: await this.notificationsService.getAll(user.userId, +page, +limit) };
   }
 
+  @Get('unread-count')
+  async unreadCount(@CurrentUser() user: { userId: string }) {
+    return { success: true, data: { count: await this.notificationsService.unreadCount(user.userId) } };
+  }
+
   @Patch('read-all')
   @HttpCode(HttpStatus.OK)
   async markAllRead(@CurrentUser() user: { userId: string }) {

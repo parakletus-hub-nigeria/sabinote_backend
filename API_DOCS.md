@@ -129,6 +129,21 @@ Stateless logout — client must discard both tokens after calling this.
 
 ---
 
+### POST `/auth/change-password`
+Auth required. Body: `{ "currentPassword": "...", "newPassword": "min 8 chars" }`.
+Revokes every refresh session, then returns a fresh `{ accessToken, refreshToken }` for the calling device.
+`currentPassword` may be omitted only for accounts with no password set.
+
+### POST `/auth/sessions`
+Auth required. Body: `{ "refreshToken": "<this device's token>" }` (optional; used to flag `isCurrent`).
+Returns active sessions: `[{ sessionId, userAgent, ipAddress, createdAt, updatedAt, isCurrent }]`.
+
+### DELETE `/auth/sessions/:sessionId`
+Auth required. Revokes one session of the caller.
+
+### POST `/auth/logout-others`
+Auth required. Body: `{ "refreshToken": "<this device's token>" }`. Revokes all other sessions.
+
 ### GET `/auth/me`
 Get the currently authenticated user's full profile, wallet, and settings.
 
@@ -232,7 +247,13 @@ Update preferences. All fields optional.
 
 ---
 
+> `PATCH /users/settings` also accepts `notifyGenerationComplete` and `notifyWalletTopup` (booleans). When off, the
+> matching in-app notification is not created. `emailNotifications` is stored but no email provider is wired up yet.
+
 ### DELETE `/users/account`
+Body: `{ "password": "..." }` — required when the account has a password. Removes the user's notes, transactions,
+notifications, resources (including the stored files) and wallet.
+
 Permanently delete the user's account. Cascades to wallet and settings.
 
 **Response `200`:**
@@ -971,6 +992,9 @@ Paginated list of the user's notifications, newest first.
 **Notification types:** `wallet_topup` · `generation_complete` · `generation_failed` · `system`
 
 ---
+
+### GET `/notifications/unread-count`
+Auth required. Returns `{ count }`.
 
 ### PATCH `/notifications/read-all`
 Mark all unread notifications as read.

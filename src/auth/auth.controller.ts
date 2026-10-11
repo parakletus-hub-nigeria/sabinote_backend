@@ -1,7 +1,10 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
   HttpCode,
   HttpStatus,
   Post,
@@ -11,6 +14,7 @@ import {
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -80,5 +84,54 @@ export class AuthController {
   async me(@CurrentUser() user: { userId: string }) {
     const data = await this.authService.getMe(user.userId);
     return { success: true, data };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  async changePassword(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: ChangePasswordDto,
+    @Req() req: Request,
+  ) {
+    const data = await this.authService.changePassword(user.userId, dto, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    });
+    return { success: true, data };
+  }
+
+  // POST (not GET) so the current refresh token travels in the body, not the URL.
+  @UseGuards(JwtAuthGuard)
+  @Post('sessions')
+  @HttpCode(HttpStatus.OK)
+  async sessions(
+    @CurrentUser() user: { userId: string },
+    @Body('refreshToken') refreshToken?: string,
+  ) {
+    return { success: true, data: await this.authService.listSessions(user.userId, refreshToken) };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('logout-others')
+  @HttpCode(HttpStatus.OK)
+  async logoutOthers(
+    @CurrentUser() user: { userId: string },
+    @Body('refreshToken') refreshToken: string,
+  ) {
+    if (!refreshToken) throw new BadRequestException('refreshToken is required');
+    await this.authService.logoutOthers(user.userId, refreshToken);
+    return { success: true, message: 'Signed out of all other devices' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('sessions/:sessionId')
+  @HttpCode(HttpStatus.OK)
+  async revokeSession(
+    @CurrentUser() user: { userId: string },
+    @Param('sessionId') sessionId: string,
+  ) {
+    await this.authService.revokeSession(user.userId, sessionId);
+    return { success: true, message: 'Session revoked' };
   }
 }

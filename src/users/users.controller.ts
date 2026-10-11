@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Patch, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { UsersService } from './users.service';
@@ -32,8 +33,8 @@ export class UsersController {
 
   @Delete('account')
   @HttpCode(HttpStatus.OK)
-  async deleteAccount(@CurrentUser() user: { userId: string }) {
-    await this.usersService.deleteAccount(user.userId);
+  async deleteAccount(@CurrentUser() user: { userId: string }, @Body() dto: DeleteAccountDto) {
+    await this.usersService.deleteAccount(user.userId, dto.password);
     return { success: true, message: 'Account deleted' };
   }
 }

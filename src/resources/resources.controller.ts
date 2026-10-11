@@ -4,15 +4,20 @@ import {
   Param, Post, Query, UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ResourceType } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { UploadResourceDto } from './dto/upload-resource.dto';
 import { ResourcesService } from './resources.service';
 
-const PDF_UPLOAD_OPTIONS = {
+// Browsers/OSes disagree on the PDF MIME type (Android and some Windows setups send
+// octet-stream or x-pdf), so the filter is lenient and the real check is the %PDF magic
+// bytes in ResourcesService.assertPdf.
+const PDF_MIME_TYPES = new Set(['application/pdf', 'application/x-pdf', 'application/octet-stream']);
+
+export const PDF_UPLOAD_OPTIONS = {
   limits: { fileSize: 30 * 1024 * 1024 },   // 30 MB — covers large textbooks
   fileFilter: (_req: any, file: Express.Multer.File, cb: Function) => {
-    if (file.mimetype === 'application/pdf') {
+    if (PDF_MIME_TYPES.has(file.mimetype) || /\.pdf$/i.test(file.originalname)) {
       cb(null, true);
     } else {
       cb(new BadRequestException('Only PDF files are accepted'), false);
@@ -40,15 +45,9 @@ export class ResourcesController {
   async upload(
     @CurrentUser() user: { userId: string },
     @UploadedFile() file: Express.Multer.File,
-    @Body('resourceName') resourceName: string,
-    @Body('resourceType') resourceType: ResourceType,
-    @Body('subject') subject?: string,
-    @Body('classLevel') classLevel?: string,
-    @Body('state') state?: string,
+    @Body() dto: UploadResourceDto,
   ) {
-    const data = await this.resourcesService.upload(user.userId, file, {
-      resourceName, resourceType, subject, classLevel, state,
-    });
+    const data = await this.resourcesService.upload(user.userId, file, dto);
     return { success: true, data };
   }
 

@@ -14,6 +14,7 @@ import {
   CurriculumWeek,
   NotePhase,
   NoteStatus,
+  NotificationType,
   PromptPhase,
   ResponseStatus,
   TransactionPurpose,
@@ -28,6 +29,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CurriculumService, NormalizedCurriculum } from '../curriculum/curriculum.service';
 import { GenerateNoteDto } from './dto/generate-note.dto';
 import { GeneratePlanDto } from './dto/generate-plan.dto';
@@ -61,6 +63,7 @@ export class GenerationService {
     private config: ConfigService,
     private curriculumService: CurriculumService,
     private cache: CacheService,
+    private notifications: NotificationsService,
   ) {
     this.apiKey = config.getOrThrow('OPENROUTER_API_KEY');
     this.planCost = +config.get('PLAN_COST_PARATS', '8');
@@ -106,6 +109,14 @@ export class GenerationService {
   async generatePlan(userId: string, dto: GeneratePlanDto) {
     if (!dto.curriculumUnitId && !dto.curriculumWeekId && !dto.generalCurriculumId) {
       throw new BadRequestException('Provide either curriculumUnitId, curriculumWeekId, or generalCurriculumId');
+    }
+
+    if (dto.resourceId) {
+      const resource = await this.prisma.userResource.findFirst({
+        where: { resourceId: dto.resourceId, OR: [{ userId }, { isPublic: true }] },
+        select: { resourceId: true },
+      });
+      if (!resource) throw new BadRequestException('Selected resource was not found');
     }
 
     const session = this.academicSession();
@@ -219,6 +230,12 @@ export class GenerationService {
         responseStatus: status,
       },
     }).catch((e) => this.logger.warn('Failed to save plan prompt log', e));
+
+    void this.notifications.notify(userId, NotificationType.generation_complete, {
+      title: 'Lesson plan ready',
+      body: `Your lesson plan for "${curriculum.topic}" is ready.`,
+      metadata: { noteId: note.noteId, phase: 'plan' },
+    });
 
     return {
       noteId: note.noteId,
@@ -379,6 +396,12 @@ export class GenerationService {
         responseStatus: status,
       },
     }).catch((e) => this.logger.warn('Failed to save note prompt log', e));
+
+    void this.notifications.notify(userId, NotificationType.generation_complete, {
+      title: 'Lesson note ready',
+      body: `Your lesson note for "${topic}" is ready.`,
+      metadata: { noteId, phase: 'note' },
+    });
 
     return newBalance;
   }

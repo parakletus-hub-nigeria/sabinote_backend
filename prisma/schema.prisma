@@ -128,6 +128,8 @@ model UserSettings {
   defaultSubject      String?         @db.VarChar(100)
   defaultClassLevel   String?         @db.VarChar(20)
   emailNotifications  Boolean         @default(true)
+  notifyGenerationComplete Boolean    @default(true)
+  notifyWalletTopup        Boolean    @default(true)
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
 
