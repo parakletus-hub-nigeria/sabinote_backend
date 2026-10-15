@@ -45,6 +45,8 @@ export class NotificationsService {
   }
 
   async getAll(userId: string, page: number, limit: number) {
+    page = Number.isInteger(page) && page > 0 ? page : 1;
+    limit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 100) : 20;
     const [notifications, total] = await Promise.all([
       this.prisma.notification.findMany({
         where: { userId },

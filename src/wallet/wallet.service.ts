@@ -61,6 +61,8 @@ export class WalletService {
   }
 
   async getTransactions(userId: string, page = 1, limit = 20) {
+    page = Number.isInteger(page) && page > 0 ? page : 1;
+    limit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 100) : 20;
     const skip = (page - 1) * limit;
     const [transactions, total] = await Promise.all([
       this.prisma.transaction.findMany({
@@ -273,28 +275,27 @@ export class WalletService {
 
     const reference = `manual_${Date.now()}_${userId.slice(0, 8)}`;
     const parats = pkg.parats;
-    const newBalance = Number(wallet.balance) + parats;
-
-    await this.prisma.$transaction([
-      this.prisma.wallet.update({
+    const newBalance = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.wallet.update({
         where: { walletId: wallet.walletId },
-        data: { balance: newBalance },
-      }),
-      this.prisma.transaction.create({
+        data: { balance: { increment: parats } },
+      });
+      await tx.transaction.create({
         data: {
           walletId: wallet.walletId,
           userId,
           type: TransactionType.credit,
           amountAdded: parats,
-          balanceBefore: wallet.balance,
-          balanceAfter: newBalance,
+          balanceBefore: Number(updated.balance) - parats,
+          balanceAfter: updated.balance,
           purpose: TransactionPurpose.topup,
           paystackReference: reference,
           description: `Manual top up ${parats} Parats [DEV ONLY]`,
           status: TransactionStatus.success,
         },
-      }),
-    ]);
+      });
+      return Number(updated.balance);
+    });
 
     await this.notifications.notify(userId, NotificationType.wallet_topup, {
       title: 'Wallet Topped Up',

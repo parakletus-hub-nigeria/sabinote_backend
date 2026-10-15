@@ -66,31 +66,34 @@ export class AdminService {
     const wallet = await this.prisma.wallet.findUnique({ where: { userId: dto.userId } });
     if (!wallet) throw new NotFoundException('Wallet not found');
 
-    const newBalance = Number(wallet.balance) + dto.amount;
-    await this.prisma.$transaction([
-      this.prisma.wallet.update({ where: { userId: dto.userId }, data: { balance: newBalance } }),
-      this.prisma.transaction.create({
+    const newBalance = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.wallet.update({
+        where: { userId: dto.userId },
+        data: { balance: { increment: dto.amount } },
+      });
+      await tx.transaction.create({
         data: {
           walletId: wallet.walletId,
           userId: dto.userId,
           type: TransactionType.credit,
           amountAdded: dto.amount,
-          balanceBefore: wallet.balance,
-          balanceAfter: newBalance,
+          balanceBefore: Number(updated.balance) - dto.amount,
+          balanceAfter: updated.balance,
           purpose: TransactionPurpose.topup,
           status: TransactionStatus.success,
           description: `Admin credit: ${dto.reason}`,
         },
-      }),
-      this.prisma.notification.create({
+      });
+      await tx.notification.create({
         data: {
           userId: dto.userId,
           type: NotificationType.wallet_topup,
           title: 'Wallet Credited',
           body: `Your wallet has been credited with ${dto.amount} Parats by admin. Reason: ${dto.reason}`,
         },
-      }),
-    ]);
+      });
+      return Number(updated.balance);
+    });
 
     return { newBalance };
   }

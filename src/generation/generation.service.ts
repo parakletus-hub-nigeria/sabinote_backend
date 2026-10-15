@@ -15,6 +15,7 @@ import {
   NotePhase,
   NoteStatus,
   NotificationType,
+  Prisma,
   PromptPhase,
   ResponseStatus,
   TransactionPurpose,
@@ -165,7 +166,7 @@ export class GenerationService {
     const noteName = `${curriculum.classLevel} ${curriculum.subject} Wk${curriculum.week} T${curriculum.term}`;
 
     const [, note] = await this.prisma.$transaction(async (tx) => {
-      const newBalance = Number(wallet.balance) - this.planCost;
+      const newBalance = await this.debitWallet(tx, wallet.walletId, this.planCost);
 
       const transaction = await tx.transaction.create({
         data: {
@@ -180,8 +181,6 @@ export class GenerationService {
           description: `Lesson plan: ${curriculum.topic}`,
         },
       });
-
-      await tx.wallet.update({ where: { walletId: wallet.walletId }, data: { balance: newBalance } });
 
       const lessonNote = await tx.lessonNote.create({
         data: {
@@ -340,9 +339,10 @@ export class GenerationService {
     existingPlanContent?: Record<string, any>;
   }): Promise<number> {
     const { userId, noteId, wallet, plan, lessonNote, prompt, tokensUsed, status, topic, existingPlanContent } = params;
-    const newBalance = Number(wallet.balance) - this.noteCost;
+    let newBalance = 0;
 
     await this.prisma.$transaction(async (tx) => {
+      newBalance = await this.debitWallet(tx, wallet.walletId, this.noteCost);
       const transaction = await tx.transaction.create({
         data: {
           walletId: wallet.walletId,
@@ -356,8 +356,6 @@ export class GenerationService {
           description: `Lesson note: ${topic}`,
         },
       });
-
-      await tx.wallet.update({ where: { walletId: wallet.walletId }, data: { balance: newBalance } });
 
       const existingPlan = existingPlanContent || {};
       const grounding = existingPlan._grounding;
@@ -576,8 +574,7 @@ export class GenerationService {
     if (!content) throw new ServiceUnavailableException('AI generation failed. Your Parats were not deducted.');
 
     await this.prisma.$transaction(async (tx) => {
-      const newBalance = Number(wallet.balance) - this.regenCost;
-      await tx.wallet.update({ where: { walletId: wallet.walletId }, data: { balance: newBalance } });
+      const newBalance = await this.debitWallet(tx, wallet.walletId, this.regenCost);
       await tx.transaction.create({
         data: {
           walletId: wallet.walletId,
@@ -619,6 +616,26 @@ export class GenerationService {
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  /**
+   * Atomically deducts `cost` and returns the new balance. The balance check lives in the
+   * UPDATE itself, so two concurrent generations can't both spend the same Parats.
+   */
+  private async debitWallet(
+    tx: Prisma.TransactionClient,
+    walletId: string,
+    cost: number,
+  ): Promise<number> {
+    const debited = await tx.wallet.updateMany({
+      where: { walletId, balance: { gte: cost } },
+      data: { balance: { decrement: cost } },
+    });
+    if (debited.count === 0) {
+      throw new HttpException('Insufficient Parats for this generation.', HttpStatus.PAYMENT_REQUIRED);
+    }
+    const updated = await tx.wallet.findUniqueOrThrow({ where: { walletId } });
+    return Number(updated.balance);
+  }
 
   private async ensureBalance(userId: string, cost: number): Promise<Wallet> {
     let wallet = await this.prisma.wallet.findUnique({ where: { userId } });
