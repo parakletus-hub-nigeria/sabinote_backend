@@ -1,5 +1,7 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { AppService } from './app.service';
+import { AdminGuard } from './admin/admin.guard';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PLATFORM_RELEASE_MANIFEST } from './common/config/release.manifest';
 
 @Controller()
@@ -51,6 +53,9 @@ export class AppController {
     };
   }
 
+  // Admin only: it makes paid OpenRouter calls (any model via ?model=) and
+  // reports on the API key. It was previously public.
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @Get('system/ai-health')
   async getAiHealth(
     @Query('model') modelOverride?: string,
@@ -59,7 +64,7 @@ export class AppController {
     const apiKey = process.env.OPENROUTER_API_KEY || '';
     const keyConfigured = !!apiKey;
     const keyPrefix = apiKey
-      ? `${apiKey.substring(0, 10)}...${apiKey.substring(Math.max(0, apiKey.length - 4))}`
+      ? `…${apiKey.substring(Math.max(0, apiKey.length - 4))}`
       : 'NOT_SET';
     const model = modelOverride || process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash';
 
