@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AdminModule } from './admin/admin.module';
+import { ConsoleModule } from './console/console.module';
 import { AuthModule } from './auth/auth.module';
 import { AppCacheModule } from './cache/cache.module';
 import { CurriculumModule } from './curriculum/curriculum.module';
@@ -35,6 +36,7 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
     ResourcesModule,
     ExportModule,
     AdminModule,
+    ConsoleModule,
   ],
   controllers: [AppController],
   providers: [AppService],
